@@ -31,24 +31,19 @@ from datetime import datetime
 import os.path
 import time
 import sys
-# import tensorflow as tf
-# import numpy as np
-# import importlib
 import itertools
 import argparse
-# import facenet
 import lfw
-from mmd import *
-# from log_config import *
+import importlib
 from associative import *   # associative, fengchen
- 
+from domain_separation import losses
 from tensorflow.python.ops import data_flow_ops
-
 from six.moves import xrange
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+
 def main(args):
-  
+
     network = importlib.import_module(args.model_def)
 
     subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
@@ -56,12 +51,17 @@ def main(args):
     if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
         os.makedirs(log_dir)
     model_dir = os.path.join(os.path.expanduser(args.models_base_dir), subdir)
+
     if not os.path.isdir(model_dir):  # Create the model directory if it doesn't exist
         os.makedirs(model_dir)
 
+    model_dir_plus = os.path.join(os.path.expanduser(args.models_plus_base_dir), subdir)
+    if not os.path.isdir(model_dir_plus):  # Create the model directory if it doesn't exist
+        os.makedirs(model_dir_plus)
+
     # Write arguments to a text file
     facenet.write_arguments_to_file(args, os.path.join(log_dir, 'arguments.txt'))
-        
+
     # Store some git revision info in a text file in the log directory
     src_path,_ = os.path.split(os.path.realpath(__file__))
     facenet.store_revision_info(src_path, log_dir, ' '.join(sys.argv))
@@ -69,12 +69,12 @@ def main(args):
     np.random.seed(seed=args.seed)
     train_set_ID = facenet.get_dataset(args.data_dir_ID)
     train_set_camera = facenet.get_dataset(args.data_dir_camera)
-    
+
     logger.info('Model directory: %s' % model_dir)
     logger.info('Log directory: %s' % log_dir)
     if args.pretrained_model:
         logger.info('Pre-trained model: %s' % os.path.expanduser(args.pretrained_model))
-    
+
     if args.lfw_dir:
         logger.info('LFW directory: %s' % args.lfw_dir)
         # Read the file containing the pairs used for testing
@@ -93,7 +93,7 @@ def main(args):
         learning_rate_placeholder = tf.placeholder(tf.float32, name='learning_rate')
         batch_size_placeholder = tf.placeholder(tf.int32, name='batch_size')
         phase_train_placeholder = tf.placeholder(tf.bool, name='phase_train')
-        
+
         image_paths_placeholder_ID = tf.placeholder(tf.string, shape=(None,3), name='image_paths_ID')
         image_paths_placeholder_camera = tf.placeholder(tf.string, shape=(None, 3), name='image_paths_camera')
         image_paths_placeholder_valid = tf.placeholder(tf.string, shape=(None, 3), name='image_paths_valid')
@@ -126,14 +126,14 @@ def main(args):
             for filename in tf.unstack(filenames):
                 file_contents = tf.read_file(filename)
                 image = tf.image.decode_image(file_contents, channels=3)
-                
+
                 if args.random_crop:
                     image = tf.random_crop(image, [args.image_size, args.image_size, 3])
                 else:
                     image = tf.image.resize_image_with_crop_or_pad(image, args.image_size, args.image_size)
                 if args.random_flip:
                     image = tf.image.random_flip_left_right(image)
-    
+
                 #pylint: disable=no-member
                 image.set_shape((args.image_size, args.image_size, 3))
                 images.append(tf.image.per_image_standardization(image))
@@ -229,7 +229,7 @@ def main(args):
         anchor_camera, positive_camera, negative_camera = tf.unstack(tf.reshape(embeddings_camera, [-1, 3, args.embedding_size]), 3, 1)
         triplet_loss_camera = facenet.triplet_loss(anchor_camera, positive_camera, negative_camera, args.alpha)
 
-        images_mmd_ID, images_mmd_camera, _, _ = assoc.get_image_and_label()
+        images_mmd_ID, images_mmd_camera, _, _ = assoc.get_image_and_label_dann()
         feature_map3_ID, _, _, _, _ = network.inference(images_mmd_ID, args.keep_probability,
                                                         phase_train=phase_train_placeholder,
                                                         bottleneck_layer_size=args.embedding_size,
@@ -239,9 +239,12 @@ def main(args):
                                                             bottleneck_layer_size=args.embedding_size,
                                                             weight_decay=args.weight_decay)
 
-        feature_map3_ID = tf.nn.l2_normalize(feature_map3_ID, 1, 1e-10, name='feature_map3_ID')
-        feature_map3_camera = tf.nn.l2_normalize(feature_map3_camera, 1, 1e-10, name='feature_map3_camera')
-        loss_feature_map3 = mmd_loss(feature_map3_ID, feature_map3_camera)
+        saver = tf.train.Saver(tf.trainable_variables(), max_to_keep=10)
+
+        # feature_map3_ID = tf.nn.l2_normalize(feature_map3_ID, 1, 1e-10, name='feature_map3_ID')
+        # feature_map3_camera = tf.nn.l2_normalize(feature_map3_camera, 1, 1e-10, name='feature_map3_camera')
+        dann_loss = 0.1 * losses.dann_loss(feature_map3_ID, feature_map3_camera, 1)
+        # logger.debug("feature_map3_ID: %s, feature_map3_camera: %s" % (feature_map3_ID.get_shape(), feature_map3_camera.get_shape()))
 
         learning_rate = tf.train.exponential_decay(learning_rate_placeholder, global_step,
             args.learning_rate_decay_epochs*args.epoch_size, args.learning_rate_decay_factor, staircase=True)
@@ -256,7 +259,9 @@ def main(args):
         triplet_loss = tf.add_n([triplet_loss_ID] + [triplet_loss_camera] + regularization_losses, name='triplet_loss')
 
         # associative, fengchen
-        loss_total = tf.add_n([triplet_loss_ID] + [triplet_loss_camera] + [loss_feature_map3] + regularization_losses , name='loss_total')
+        loss_total = tf.add_n([triplet_loss_ID] + [triplet_loss_camera] + [dann_loss] + regularization_losses , name='loss_total')
+
+        saver_plus = tf.train.Saver(tf.trainable_variables(), max_to_keep=10)
 
         # Build a Graph that trains the model with one batch of examples and updates the model parameters
         train_op = facenet.train(loss_total, global_step, args.optimizer,
@@ -266,7 +271,7 @@ def main(args):
 
         # Start running operations on the Graph.
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_memory_fraction)
-        sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))        
+        sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 
         # Initialize variables
         sess.run(tf.global_variables_initializer(), feed_dict={phase_train_placeholder:True})
@@ -280,9 +285,9 @@ def main(args):
 
             if args.pretrained_model:
                 logger.info('Restoring pretrained model: %s' % args.pretrained_model)
-                saver = tf.train.Saver(tf.trainable_variables(), max_to_keep=3)
+                # saver = tf.train.Saver(tf.trainable_variables(), max_to_keep=3)
                 saver.restore(sess, os.path.expanduser(args.pretrained_model))
-            saver = tf.train.Saver(tf.global_variables(), max_to_keep=3)
+            # saver = tf.train.Saver(tf.global_variables(), max_to_keep=3)
 
             # Training and validation loop
             epoch = 0
@@ -293,11 +298,12 @@ def main(args):
                 train(args, sess, train_set_ID, train_set_camera, epoch, image_paths_placeholder_ID, image_paths_placeholder_camera,
                       labels_placeholder_ID, labels_placeholder_camera, labels_batch_ID, labels_batch_camera,
                       batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op_ID, enqueue_op_camera, global_step, embeddings_ID, embeddings_camera,
-                      triplet_loss, loss_total, triplet_loss_ID, triplet_loss_camera, loss_feature_map3, regularization_losses,
+                      triplet_loss, loss_total, triplet_loss_ID, triplet_loss_camera, dann_loss, regularization_losses,
                       train_op, train_op_triplet, summary_writer, args.learning_rate_schedule_file, args.embedding_size)
 
                 # Save variables and the metagraph if it doesn't exist already
                 save_variables_and_metagraph(sess, saver, summary_writer, model_dir, subdir, step)
+                save_variables_and_metagraph(sess, saver_plus, summary_writer, model_dir_plus, subdir, step)
 
                 # Evaluate on LFW
                 if args.lfw_dir:
@@ -311,11 +317,11 @@ def main(args):
 def train(args, sess, dataset_ID, dataset_camera, epoch, image_paths_placeholder_ID, image_paths_placeholder_camera,
           labels_placeholder_ID, labels_placeholder_camera, labels_batch_ID, labels_batch_camera,
           batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op_ID, enqueue_op_camera, global_step, embeddings_ID, embeddings_camera,
-          triplet_loss, loss_total, triplet_loss_ID, triplet_loss_camera, loss_feature_map3, regularization_losses,
+          triplet_loss, loss_total, triplet_loss_ID, triplet_loss_camera, dann_loss, regularization_losses,
           train_op, train_op_triplet, summary_writer, learning_rate_schedule_file, embedding_size):
 
     batch_number = 0
-    
+
     if args.learning_rate>0.0:
         lr = args.learning_rate
     else:
@@ -324,7 +330,7 @@ def train(args, sess, dataset_ID, dataset_camera, epoch, image_paths_placeholder
         # Sample people randomly from the dataset
         image_paths_ID, num_per_class_ID = sample_people(dataset_ID, args.people_per_batch, args.images_per_person)
         image_paths_camera, num_per_class_camera = sample_people(dataset_camera, args.people_per_batch, args.images_per_person)
-        
+
         logger.debug('Running forward pass on sampled images: ')
         start_time = time.time()
         nrof_examples = args.people_per_batch * args.images_per_person
@@ -413,10 +419,10 @@ def train(args, sess, dataset_ID, dataset_camera, epoch, image_paths_placeholder
             batch_size = min(nrof_examples-i*args.batch_size, args.batch_size)
             feed_dict = {batch_size_placeholder: batch_size, learning_rate_placeholder: lr, phase_train_placeholder: True}
 
-            err_total, err_ID, err_camera, err_feature_map3, err_regularization, _, step = sess.run(
-                [loss_total, triplet_loss_ID, triplet_loss_camera, loss_feature_map3, regularization_losses, train_op, global_step], feed_dict=feed_dict)
-            logger.debug('total_loss:%f\ttriplet_loss_ID:%f\ttriplet_loss_camera:%f\tloss_feature_map3:%f' %
-                (err_total, err_ID, err_camera, err_feature_map3))
+            err_total, err_ID, err_camera, err_dann, err_regularization, _, step = sess.run(
+                [loss_total, triplet_loss_ID, triplet_loss_camera, dann_loss, regularization_losses, train_op, global_step], feed_dict=feed_dict)
+            logger.debug('total_loss:%f\ttriplet_loss_ID:%f\ttriplet_loss_camera:%f\tdann_loss:%f' %
+                (err_total, err_ID, err_camera, err_dann))
 
             duration = time.time() - start_time
             logger.debug('Epoch: [%d][%d/%d]\tTime %.3f\ttotal_loss %f' % (epoch, batch_number + 1, args.epoch_size, duration, err_total))
@@ -586,6 +592,8 @@ def parse_arguments(argv):
         help='Directory where to write event logs.', default='~/logs/facenet')
     parser.add_argument('--models_base_dir', type=str,
         help='Directory where to write trained models and checkpoints.', default='~/models/facenet')
+    parser.add_argument('--models_plus_base_dir', type=str,
+        help='Directory where to write trained models_plus and checkpoints.', default='~/models_plus/facenet')
     parser.add_argument('--gpu_memory_fraction', type=float,
         help='Upper bound on the amount of GPU memory that will be used by the process.', default=1.0)
     parser.add_argument('--pretrained_model', type=str,
