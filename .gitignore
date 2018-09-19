@@ -97,6 +97,7 @@ ENV/
 *.pyc
 emb/
 models/
+!src/models
 log/
 logs/
 summary/
