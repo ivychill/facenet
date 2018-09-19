@@ -128,11 +128,11 @@ def gen_pairs(path,cycle,num):
                     im_no1 = np.random.randint(0, len(cls.image_paths))
                     im_no2 = np.random.randint(0, len(cls.image_paths))
                     sort_paths = np.sort(cls.image_paths)
-                    #print(sort_paths[im_no1].split('.')[-2])
-                    #no1 = int(sort_paths[im_no1].split('.')[-2][-4:])
-                    #no2 = int(sort_paths[im_no2].split('.')[-2][-4:])
-                    no1 = im_no1
-                    no2 = im_no2
+                    print(sort_paths[im_no1].split('.')[-2])
+                    no1 = int(sort_paths[im_no1].split('.')[-2][-4:])
+                    no2 = int(sort_paths[im_no2].split('.')[-2][-4:])
+                    #no1 = im_no1
+                    #no2 = im_no2
                     if im_no2 != im_no1:
                         #txt.append(cls.name + '        ' + str(im_no1) + '        ' + str(im_no2))
                         file.write(cls.name + '    ' + str(no1) + '    ' + str(no2) + '\n')
@@ -148,12 +148,12 @@ def gen_pairs(path,cycle,num):
                 if len(cls1.image_paths) > 0 and len(cls2.image_paths) > 0:
                     im_no1 = np.random.randint(0, len(cls1.image_paths))
                     sort_paths = np.sort(cls1.image_paths)
-                    #no1 = int(sort_paths[im_no1].split('.')[-2][-4:])
-                    no1 = im_no1
+                    no1 = int(sort_paths[im_no1].split('.')[-2][-4:])
+                    #no1 = im_no1
                     sort_paths = np.sort(cls2.image_paths)
                     im_no2 = np.random.randint(0, len(cls2.image_paths))
-                    #no2 = int(sort_paths[im_no2].split('.')[-2][-4:])
-                    no2 = im_no2
+                    no2 = int(sort_paths[im_no2].split('.')[-2][-4:])
+                    #no2 = im_no2
                     file.write(cls1.name + '    ' + str(no1) + '    ' + cls2.name + '    ' + str(no2) + '\n')
                     nn = nn + 1
         # file.write(''.join(txt))
@@ -166,10 +166,12 @@ def main_txt(args):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     if(args.mode=='pairs'):
-        gen_pairs(args.input_dir, 10, 300)
+        gen_pairs(args.input_dir, 10, 6000)
     else:
-        SELF_TRAIN_DIR = output_dir + '/valid_align_96'
-        SELF_VAL_DIR = output_dir + '/test_align_96'
+        SELF_TRAIN_DIR = output_dir + '/train_align'
+        SELF_VAL_DIR = output_dir + '/valid_align'
+        #SELF_TRAIN_DIR = '/opt/liukang/face_data/makeface_A_01_out_train'
+        #SELF_VAL_DIR = '/opt/liukang/face_data/makeface_A_01_out_test'
         if not os.path.exists(SELF_TRAIN_DIR):
             os.makedirs(SELF_TRAIN_DIR)
         if not os.path.exists(SELF_VAL_DIR):
@@ -184,15 +186,12 @@ def main_txt(args):
             #if(len(cls.name)<5):
             #   cls.name = str(cls.name).zfill(5)
             # for image_path in cls.image_paths:
-            if(cls.name == 'face_2'):
-                print(cls.name)
+
             train = 1
             val = 1
             if(len(cls.image_paths)>5):
                 for i in range(len(cls.image_paths)):
-                    if i < 5:
-                        if (cls.name == 'face_2'):
-                            print(cls.name)
+                    if i < len(cls.image_paths)*2//3:                        
                         output_train_dir = os.path.join(SELF_TRAIN_DIR, cls.name)
                         if not os.path.exists(output_train_dir):
                             os.makedirs(output_train_dir)
@@ -207,15 +206,66 @@ def main_txt(args):
                         shutil.copyfile(cls.image_paths[i], output_filename)
                         val = val + 1
                 num = num + 1
-            if num == 2000:
-                break
-
-
         gen_pairs(SELF_TRAIN_DIR,10,300)
         gen_pairs(SELF_VAL_DIR,10,300)
     #'''
     #gen_pairs('massiveSample',10,300)
 
+def main_sh(args):
+    output_dir = os.path.expanduser(args.output_dir)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    path=args.input_dir
+    cycle = 10
+    num = 100
+    dataset = get_dataset_txt(path)
+    pairspath = os.path.join(path, 'pairs.txt')
+    file = open(pairspath, 'w')
+    file.write(str(cycle) + '    ' + str(num) + '\n')
+    # txt = []
+    # txt.append(str(cycle) + '    ' + str(num) + '\n')
+    for i in range(cycle):
+        oo = 0
+        while oo < num:
+            if len(dataset) > 1:
+                num_cls = np.random.randint(0, len(dataset))
+                cls = dataset[num_cls]
+                if len(cls.image_paths) > 0:
+                    im_no1 = np.random.randint(0, 2)
+                    im_no2 = np.random.randint(3, 5)
+                    sort_paths = np.sort(cls.image_paths)
+                    # print(sort_paths[im_no1].split('.')[-2])
+                    no1 = int(sort_paths[im_no1].split('.')[-2][-4:])
+                    no2 = int(sort_paths[im_no2].split('.')[-2][-4:])
+                    # no1 = im_no1
+                    # no2 = im_no2
+                    if im_no2 != im_no1:
+                        # txt.append(cls.name + '        ' + str(im_no1) + '        ' + str(im_no2))
+                        file.write(cls.name + '    ' + str(no1) + '    ' + str(no2) + '\n')
+                        oo = oo + 1
+        nn = 0
+        while nn < num:
+            cls_no1 = np.random.randint(0, len(dataset))
+            cls_no2 = np.random.randint(0, len(dataset))
+            if cls_no1 != cls_no2:
+                # txt.append(cls1.name + '    ' + str(im_no1) + '    ' + cls2.name + '    ' + str(im_no2))
+                cls1 = dataset[cls_no1]
+                cls2 = dataset[cls_no2]
+                if len(cls1.image_paths) > 0 and len(cls2.image_paths) > 0:
+                    im_no1 = np.random.randint(0, 2)
+                    sort_paths = np.sort(cls1.image_paths)
+                    no1 = int(sort_paths[im_no1].split('.')[-2][-4:])
+                    # no1 = im_no1
+                    sort_paths = np.sort(cls2.image_paths)
+                    im_no2 = np.random.randint(3, 5)
+                    no2 = int(sort_paths[im_no2].split('.')[-2][-4:])
+                    # no2 = im_no2
+                    file.write(cls1.name + '    ' + str(no1) + '    ' + cls2.name + '    ' + str(no2) + '\n')
+                    nn = nn + 1
+                    # file.write(''.join(txt))
+    # print(len(txt))
+    file.flush()
+    file.close()
 
 
 
@@ -235,3 +285,4 @@ def parse_arguments(argv):
 if __name__ == '__main__':
     #main(parse_arguments(sys.argv[1:]))
     main_txt(parse_arguments(sys.argv[1:]))
+    #main_sh(parse_arguments(sys.argv[1:]))
