@@ -2,6 +2,7 @@ import argparse
 import sys
 import os, shutil
 import numpy as np
+import glob
 
 class ImageClass():
     "Stores the paths to images for a given class"
@@ -111,6 +112,7 @@ def main(args):
             output_labels_filename = os.path.join(output_labels_dir,
                                                   str(cls.num).zfill(5) + '_lbl' + str(i).zfill(2) + '.png')
             shutil.copyfile(cls.image_paths[i], output_labels_filename)
+
 def gen_pairs(path,cycle,num):
     dataset = get_dataset_txt(path)
     pairspath = os.path.join(path,'pairs.txt')
@@ -125,8 +127,11 @@ def gen_pairs(path,cycle,num):
                 num_cls = np.random.randint(0, len(dataset))
                 cls = dataset[num_cls]
                 if len(cls.image_paths)>0:
-                    im_no1 = np.random.randint(0, len(cls.image_paths))
-                    im_no2 = np.random.randint(0, len(cls.image_paths))
+                    # split source and target, source: *_00xx.png, target: *_01xx.png
+                    id_images = [s for s in cls.image_paths if '_00' in s]
+                    # glob.glob(cls.image_paths+'*_01??.png')
+                    im_no1 = np.random.randint(0, len(id_images))
+                    im_no2 = np.random.randint(len(id_images), len(cls.image_paths))
                     sort_paths = np.sort(cls.image_paths)
                     print(sort_paths[im_no1].split('.')[-2])
                     no1 = int(sort_paths[im_no1].split('.')[-2][-4:])
@@ -166,7 +171,7 @@ def main_txt(args):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     if(args.mode=='pairs'):
-        gen_pairs(args.input_dir, 10, 6000)
+        gen_pairs(args.input_dir, 10, 300)
     else:
         SELF_TRAIN_DIR = output_dir + '/train_align'
         SELF_VAL_DIR = output_dir + '/valid_align'
