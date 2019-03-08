@@ -51,7 +51,7 @@ case $1 in
         export PYTHONPATH=$(pwd)/src
         export CUDA_VISABLE_DEVICES=2,3
         echo "my_validate_on_lfw ....."
-        python evaluation/my_validate_on_lfw_double.py \
+        python evaluation/my_validate_on_lfw.py \
         --lfw_dir $2 \
         --model $(pwd)/models/double_input/20180814-164925 \
         --lfw_pairs $2/pairs.txt \
@@ -77,6 +77,8 @@ case $1 in
           --weight_decay 1e-4 \
           --lfw_dir data/validate \
           --lfw_pairs data/validate/pairs.txt \
+          --val_dir /data/yanhong.jia/datasets/facenet/datasets_for_train/valid_24peo_3D+camera \
+          --val_pairs /data/yanhong.jia/datasets/facenet/datasets_for_train/valid_24peo_3D+camera/pairs.txt \
           --max_nrof_epochs 5000  \
           --batch_size 15 \
           --people_per_batch 30 \

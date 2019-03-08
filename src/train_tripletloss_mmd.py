@@ -31,17 +31,17 @@ from datetime import datetime
 import os.path
 import time
 import sys
-# import tensorflow as tf
-# import numpy as np
-# import importlib
+import tensorflow as tf
+import numpy as np
+import importlib
 import itertools
 import argparse
-# import facenet
+import facenet
 import lfw
-from mmd import *
-# from log_config import *
-from associative import *   # associative, fengchen
- 
+from domain_separation import losses
+from log_config import logger
+from associative.associative import *   # associative, fengchen
+
 from tensorflow.python.ops import data_flow_ops
 
 from six.moves import xrange
@@ -241,7 +241,7 @@ def main(args):
 
         feature_map3_ID = tf.nn.l2_normalize(feature_map3_ID, 1, 1e-10, name='feature_map3_ID')
         feature_map3_camera = tf.nn.l2_normalize(feature_map3_camera, 1, 1e-10, name='feature_map3_camera')
-        loss_feature_map3 = mmd_loss(feature_map3_ID, feature_map3_camera)
+        loss_feature_map3 = losses.mmd_loss(feature_map3_ID, feature_map3_camera)
 
         learning_rate = tf.train.exponential_decay(learning_rate_placeholder, global_step,
             args.learning_rate_decay_epochs*args.epoch_size, args.learning_rate_decay_factor, staircase=True)
@@ -502,6 +502,7 @@ def sample_people(dataset, people_per_batch, images_per_person):
   
     return image_paths, num_per_class
 
+
 def evaluate(sess, image_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder, 
         batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, actual_issame, batch_size, 
         nrof_folds, log_dir, step, summary_writer, embedding_size):
@@ -541,6 +542,7 @@ def evaluate(sess, image_paths, embeddings, labels_batch, image_paths_placeholde
     summary_writer.add_summary(summary, step)
     with open(os.path.join(log_dir,'lfw_result.txt'),'at') as f:
         f.write('%d\t%.5f\t%.5f\n' % (step, np.mean(accuracy), val))
+
 
 def save_variables_and_metagraph(sess, saver, summary_writer, model_dir, model_name, step):
     # Save the model checkpoint

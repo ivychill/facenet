@@ -1,0 +1,6 @@
+arguments: src/align/align_dataset_mtcnn.py /data/liukang/face_data/deliver_cool/deliver_cool_camera /data/datasets_for_train/deliver_cool_ID_camera/camera --image_size 160 --margin 24 --random_order --gpu_memory_fraction 0.2 --GPU 2
+--------------------
+tensorflow version: 1.4.0
+--------------------
+git hash: 
+--------------------

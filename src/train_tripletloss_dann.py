@@ -35,7 +35,11 @@ import itertools
 import argparse
 import lfw
 import importlib
-from associative import *   # associative, fengchen
+import numpy as np
+import tensorflow as tf
+import facenet
+from associative.associative import Associative   # associative, fengchen
+from log_config import logger
 from domain_separation import losses
 from tensorflow.python.ops import data_flow_ops
 from six.moves import xrange
