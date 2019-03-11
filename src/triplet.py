@@ -111,7 +111,7 @@ def train(args, sess, supervised_dataset, unsupervised_dataset, epoch,
             emb_array[lab, :] = emb
             loss_array[i] = err
             duration = time.time() - start_time
-            print('Epoch: [%d][%d/%d]\tTime %.3f\tLoss %2.3f\ttriplet_Loss %2.3f\tdan_loss %2.3f' %
+            print('Epoch: [%d][%d/%d]\tTime %.3f\tLoss %2.3f\ttriplet_Loss %2.3f\tdomain_adaptation_loss %2.3f' %
                   (epoch, batch_number + 1, args.epoch_size, duration, err, triplet_loss_, domain_adaptation_loss_))
             batch_number += 1
             i += 1

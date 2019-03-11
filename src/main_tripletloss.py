@@ -74,6 +74,7 @@ def main(args):
 
     np.random.seed(seed=args.seed)
     supervised_dataset, unsupervised_dataset = dataset.get_dataset(args.data_dir)
+    logger.debug("supervised_dataset: %s, unsupervised_dataset: %s" % (supervised_dataset, unsupervised_dataset))
 
     logger.info('Model directory: %s' % model_dir)
     logger.info('Log directory: %s' % log_dir)
