@@ -100,4 +100,5 @@ models/
 !src/models
 log/
 logs/
+data/
 summary/

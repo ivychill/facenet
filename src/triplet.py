@@ -27,20 +27,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from datetime import datetime
-import os.path
 import time
-import sys
 import tensorflow as tf
 import numpy as np
-import importlib
+
 import itertools
-import argparse
 import facenet
-import lfw
-from tensorflow.python.ops import data_flow_ops
 from six.moves import xrange
 import random
+from log_config import logger
 
 
 def train(args, sess, supervised_dataset, unsupervised_dataset, epoch,
@@ -56,9 +51,9 @@ def train(args, sess, supervised_dataset, unsupervised_dataset, epoch,
         lr = facenet.get_learning_rate_from_file(learning_rate_schedule_file, epoch)
     while batch_number < args.epoch_size:
         # Sample people randomly from the dataset
-        image_paths, num_per_class = sample_people(supervised_dataset, args.people_per_batch, args.images_per_person)
+        image_paths, num_per_class = sample_people(supervised_dataset, args.people_per_batch, args.images_per_person, batch_number)
 
-        print('Running forward pass on sampled images: ', end='')
+        logger.debug('Running forward pass on sampled images: ')
         start_time = time.time()
         nrof_examples = args.people_per_batch * args.images_per_person
         labels_array = np.reshape(np.arange(nrof_examples), (-1, 3))
@@ -74,10 +69,11 @@ def train(args, sess, supervised_dataset, unsupervised_dataset, epoch,
                                                                        learning_rate_placeholder: lr,
                                                                        phase_train_placeholder: True})
             emb_array[lab, :] = emb
-        print('%.3f' % (time.time() - start_time))
+
+        logger.debug('train time: %.3f' % (time.time()-start_time))
 
         # Select triplets based on the embeddings
-        print('Selecting suitable triplets for training')
+        logger.debug('Selecting suitable triplets for training')
         triplets, nrof_random_negs, nrof_triplets = select_triplets(emb_array, num_per_class,
                                                                     image_paths, args.people_per_batch, args.alpha)
         selection_time = time.time() - start_time
@@ -171,8 +167,9 @@ def select_triplets(embeddings, nrof_images_per_class, image_paths, people_per_b
     np.random.shuffle(triplets)
     return triplets, num_trips, len(triplets)
 
-def sample_people(supervised_dataset, people_per_batch, images_per_person):
-    # TODO: get id, camera, id+camera in order
+
+def sample_people(supervised_dataset, people_per_batch, images_per_person, batch_number):
+    # TODO: get id, camera, id+camera round-robin
     nrof_images = people_per_batch * images_per_person
     dataset = list(np.hstack(supervised_dataset.values()))
     # Sample classes from the dataset
@@ -220,3 +217,10 @@ def sample_unsupervised_dataset(unsupervised_dataset, nrof_images):
         d += 1
 
     return image_paths[0], image_paths[1]
+
+
+def triplet_loss(embeddings, embedding_size, alpha):
+    # Split embeddings into anchor, positive and negative and calculate triplet loss
+    anchor, positive, negative = tf.unstack(tf.reshape(embeddings, [-1, 3, embedding_size]), 3, 1)
+    triplet_loss = facenet.triplet_loss(anchor, positive, negative, alpha)
+    return triplet_loss

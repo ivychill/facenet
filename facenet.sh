@@ -58,124 +58,29 @@ case $1 in
         ;;
 
 
-    train_mmd)
+    train)
         export PYTHONPATH=$(pwd)/src
         export CUDA_VISABLE_DEVICES=1
         echo "train_tripletloss ....."
-        python src/train_tripletloss_mmd.py \
-          --logs_base_dir ./logs \
-          --models_base_dir ./models/ \
-          --data_dir_ID ./data/pairwise/id/ \
-          --data_dir_camera ./data/pairwise/camera/ \
-          --data_dir_associative ./data/pairwise/ \
-          --model_def models.inception_resnet_v1_double \
-          --pretrained_model ./models/20170512-110547/model-20170512-110547.ckpt-250000 \
-          --optimizer ADAM \
-          --learning_rate 0.01 \
-          --learning_rate_decay_epochs 10 \
-          --learning_rate_decay_factor 0.8 \
-          --weight_decay 1e-4 \
-          --lfw_dir data/validate \
-          --lfw_pairs data/validate/pairs.txt \
-          --val_dir /data/yanhong.jia/datasets/facenet/datasets_for_train/valid_24peo_3D+camera \
-          --val_pairs /data/yanhong.jia/datasets/facenet/datasets_for_train/valid_24peo_3D+camera/pairs.txt \
-          --max_nrof_epochs 5000  \
-          --batch_size 15 \
-          --people_per_batch 30 \
-          --images_per_person 10 \
-          --people_per_batch_assoc 10 \
-          --images_per_person_assoc 8 \
-          --gpu_memory_fraction 1.0
-        ;;
-
-
-    train_dann)
-        export PYTHONPATH=$(pwd)/src
-        export CUDA_VISABLE_DEVICES=3
-        echo "train_tripletloss ....."
-        python src/train_tripletloss_dann.py \
-          --logs_base_dir ./logs \
-          --models_base_dir ./models/ \
-          --models_plus_base_dir ./models_plus/ \
-          --data_dir_ID ./data/pairwise/id/ \
-          --data_dir_camera ./data/pairwise/camera/ \
-          --data_dir_associative ./data/pairwise/ \
-          --model_def models.inception_resnet_v1_double \
-          --pretrained_model ./models/20170512-110547/model-20170512-110547.ckpt-250000 \
-          --optimizer ADAM \
-          --learning_rate 0.01 \
-          --learning_rate_decay_epochs 10 \
-          --learning_rate_decay_factor 0.8 \
-          --weight_decay 1e-4 \
-          --lfw_dir data/validate \
-          --lfw_pairs data/validate/pairs.txt \
-          --max_nrof_epochs 5000  \
-          --batch_size 30 \
-          --people_per_batch 30 \
-          --images_per_person 10 \
-          --people_per_batch_assoc 30 \
-          --images_per_person_assoc 10 \
-          --gpu_memory_fraction 1.0
-        ;;
-
-
-    train_assoc)
-        export PYTHONPATH=$(pwd)/src
-        export CUDA_VISABLE_DEVICES=1
-        echo "train_tripletloss ....."
-        python src/train_tripletloss_assoc.py \
-          --logs_base_dir ./logs \
-          --models_base_dir ./models/ \
-          --data_dir_ID ./data/pairwise/id/ \
-          --data_dir_camera ./data/pairwise/camera/ \
-          --data_dir_associative ./data/pairwise/ \
-          --model_def models.inception_resnet_v1_double \
-          --pretrained_model ./models/20180831-103659/model-20180831-103659.ckpt-59002 \
-          --optimizer ADAM \
-          --learning_rate 0.005 \
-          --learning_rate_decay_epochs 10 \
-          --learning_rate_decay_factor 0.8 \
-          --weight_decay 1e-4 \
-          --lfw_dir data/validate \
-          --lfw_pairs data/validate/pairs.txt \
-          --max_nrof_epochs 5000  \
-          --batch_size 30 \
-          --people_per_batch 45 \
-          --images_per_person 10 \
-          --people_per_batch_assoc 10 \
-          --images_per_person_assoc 10 \
-          --gpu_memory_fraction 1.0
-        ;;
-
-
-    train_mmd_assoc)
-        export PYTHONPATH=$(pwd)/src
-        export CUDA_VISABLE_DEVICES=3
-        echo "train_tripletloss ....."
-        python src/train_tripletloss_mmd_assoc.py \
-          --logs_base_dir ./logs \
-          --models_base_dir ./models/ \
-          --data_dir_ID ./data/pairwise/id/ \
-          --data_dir_camera ./data/pairwise/camera/ \
-          --data_dir_associative ./data/pairwise/ \
-          --model_def models.inception_resnet_v1_double \
-          --pretrained_model ./models/20180831-103659/model-20180831-103659.ckpt-59002 \
-          --optimizer ADAM \
-          --learning_rate 0.005 \
-          --learning_rate_decay_epochs 10 \
-          --learning_rate_decay_factor 0.8 \
-          --weight_decay 1e-4 \
-          --lfw_dir data/validate \
-          --lfw_pairs data/validate/pairs.txt \
-          --max_nrof_epochs 5000  \
-          --batch_size 30 \
-          --people_per_batch 45 \
-          --images_per_person 10 \
-          --people_per_batch_mmd 10 \
-          --images_per_person_mmd 10 \
-          --people_per_batch_assoc 10 \
-          --images_per_person_assoc 10 \
-          --gpu_memory_fraction 1.0
+        python src/main_tripletloss.py \
+            --logs_base_dir ./logs \
+            --models_base_dir ./models/ \
+            --data_dir ./data \
+            --model_def models.inception_resnet_v1 \
+            --pretrained_model ../../../models/facenet/20170512-110547/model-20170512-110547.ckpt-250000 \
+            --optimizer ADAM \
+            --learning_rate 0.01 \
+            --learning_rate_decay_epochs 10 \
+            --learning_rate_decay_factor 0.8 \
+            --weight_decay 1e-4 \
+            --lfw_dir /data/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_35 \
+            --lfw_pairs /data/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_35/pairs.txt \
+            --val_dir /data/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_24peo_3D+camera \
+            --val_pairs /data/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_24peo_3D+camera/pairs.txt \
+            --max_nrof_epochs 5000  \
+            --people_per_batch 45 \
+            --images_per_person 10 \
+            --gpu_memory_fraction 1.0
         ;;
 
 
