@@ -2,42 +2,63 @@
 import os
 import facenet
 import tensorflow as tf
+from log_config import logger
 
 
-def get_supervised_dataset(path):
+# dataset: [('bob',['bob_01.png',...]),...]
+def get_supervised_dataset_single(path):
+    path_exp = os.path.expanduser(path)
+
+    dataset = []
+    path_dir_exp = os.path.join(path_exp)
+    classes = [path for path in os.listdir(path_dir_exp) \
+               if os.path.isdir(os.path.join(path_dir_exp, path))]
+    classes.sort()
+    nrof_classes = len(classes)
+    for i in range(nrof_classes):
+        class_name = classes[i]
+        facedir = os.path.join(path_dir_exp, class_name)
+        image_paths = facenet.get_image_paths(facedir)
+        dataset.append(facenet.ImageClass(class_name, image_paths))
+
+    # logger.debug(dataset)
+    return dataset
+
+# domain_supervised_dataset: {'id':[('bob',['bob_01.png',...]),...]}
+def get_supervised_dataset_multiple(path):
     domain_supervised_dataset = {}
     path_exp = os.path.expanduser(path)
     domains = [path for path in os.listdir(path_exp) \
                if os.path.isdir(os.path.join(path_exp, path))]
     domains.sort()
 
-    def insert_image_paths(class_name,image_paths):
-        for key,value in domain_supervised_dataset.items():
-            for cls in value:
-                if class_name == cls.name:
-                    cls.image_paths += image_paths
-                    return True
-        return False
+    # # merge identical person under "id" and "camera"
+    # def insert_image_paths(class_name, image_paths):
+    #     for key, value in domain_supervised_dataset.items():
+    #         for cls in value:
+    #             if class_name == cls.name:
+    #                 cls.image_paths += image_paths
+    #                 return True
+    #     return False
 
     for domain_name in domains:
-        if domain_name != "id+camera":
-        #if True:
-            dataset = []
-            path_dir_exp = os.path.join(path_exp, domain_name)
-            classes = [path for path in os.listdir(path_dir_exp) \
-                       if os.path.isdir(os.path.join(path_dir_exp, path))]
-            classes.sort()
-            nrof_classes = len(classes)
-            for i in range(nrof_classes):
-                class_name = classes[i]
-                facedir = os.path.join(path_dir_exp, class_name)
-                image_paths = facenet.get_image_paths(facedir)
+        dataset = []
+        path_dir_exp = os.path.join(path_exp, domain_name)
+        classes = [path for path in os.listdir(path_dir_exp) \
+                   if os.path.isdir(os.path.join(path_dir_exp, path))]
+        classes.sort()
+        nrof_classes = len(classes)
+        # logger.debug('classes: %s' % (classes))
+        # logger.debug('domain_name: %s, nrof_classes: %d' % (domain_name, nrof_classes))
+        for i in range(nrof_classes):
+            class_name = classes[i]
+            facedir = os.path.join(path_dir_exp, class_name)
+            image_paths = facenet.get_image_paths(facedir)
+            # if insert_image_paths(class_name, image_paths) is False:
+            dataset.append(facenet.ImageClass(class_name, image_paths))
+        if len(dataset)>0:
+            domain_supervised_dataset[domain_name] = dataset
 
-                # print(domains)
-                if insert_image_paths(class_name,image_paths) is False:
-                    dataset.append(facenet.ImageClass(class_name, image_paths))
-            if len(dataset)>0:
-                domain_supervised_dataset[domain_name] = dataset
 
     return domain_supervised_dataset
 
@@ -73,8 +94,12 @@ def get_unsupervised_dataset(path):
     return domain_unsupervised_dataset
 
 
-def get_dataset(path):
-    supervised_dataset = get_supervised_dataset(path)
+def get_dataset(path, data_source):
+    if data_source == 'SINGLE':
+        supervised_dataset = get_supervised_dataset_single(path)
+    else:
+        supervised_dataset = get_supervised_dataset_multiple(path)
+
     unsupervised_datset = get_unsupervised_dataset(path)
     return supervised_dataset, unsupervised_datset
 

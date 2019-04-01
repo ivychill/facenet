@@ -49,7 +49,7 @@ case $1 in
 
     eval)
         export PYTHONPATH=$(pwd)/src
-        export CUDA_VISABLE_DEVICES=2,3
+        export CUDA_VISABLE_DEVICES=2
         echo "my_validate_on_lfw ....."
         python evaluation/my_validate_on_lfw.py \
         --lfw_dir $2 \
@@ -57,8 +57,31 @@ case $1 in
         --lfw_pairs $2/pairs.txt \
         ;;
 
-
     train)
+        export PYTHONPATH=$(pwd)/src
+        export CUDA_VISABLE_DEVICES=1
+        echo "train_tripletloss ....."
+        python src/main_tripletloss.py \
+            --logs_base_dir ./logs \
+            --models_base_dir ./models/ \
+            --data_dir /data/nfs/kc/liukang/face_data/80w_camera/80w_all \
+            --model_def models.inception_resnet_v1 \
+            --optimizer ADAM \
+            --learning_rate 0.01 \
+            --learning_rate_decay_epochs 10 \
+            --learning_rate_decay_factor 0.8 \
+            --weight_decay 1e-4 \
+            --lfw_dir /data/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_35 \
+            --lfw_pairs /data/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_35/pairs.txt \
+            --val_dir /data/nfs/kc/liukang/face_data/valid_150 \
+            --val_pairs /data/nfs/kc/liukang/face_data/valid_150/pairs.txt \
+            --max_nrof_epochs 5000  \
+            --people_per_batch 45 \
+            --images_per_person 10 \
+            --gpu_memory_fraction 1.0
+        ;;
+
+    train_inc)
         export PYTHONPATH=$(pwd)/src
         export CUDA_VISABLE_DEVICES=1
         echo "train_tripletloss ....."
@@ -82,7 +105,6 @@ case $1 in
             --images_per_person 10 \
             --gpu_memory_fraction 1.0
         ;;
-
 
     clear)
         find . -name "*.pyc" -type f -print -exec rm -rf {} \;

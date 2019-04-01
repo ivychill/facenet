@@ -44,7 +44,7 @@ from scipy.optimize import brentq
 from scipy import interpolate
 import facenet
 import lfw
-import triplet
+from triplet import Triplet
 import tsne_viz
 import dataset
 
@@ -73,8 +73,11 @@ def main(args):
     facenet.store_revision_info(src_path, log_dir, ' '.join(sys.argv))
 
     np.random.seed(seed=args.seed)
-    supervised_dataset, unsupervised_dataset = dataset.get_dataset(args.data_dir)
-    logger.debug("supervised_dataset: %s, unsupervised_dataset: %s" % (supervised_dataset, unsupervised_dataset))
+    supervised_dataset, unsupervised_dataset = dataset.get_dataset(args.data_dir, args.data_source)
+    # logger.debug("supervised_dataset: %s, unsupervised_dataset: %s" % (supervised_dataset, unsupervised_dataset))
+    # logger.debug("supervised_dataset['id']: %d" % (len(supervised_dataset['id'])))
+    # logger.debug("supervised_dataset['camera']: %d" % (len(supervised_dataset['camera'])))
+    # logger.debug("supervised_dataset['id+camera']: %d" % (len(supervised_dataset['id+camera'])))
 
     logger.info('Model directory: %s' % model_dir)
     logger.info('Log directory: %s' % log_dir)
@@ -105,7 +108,7 @@ def main(args):
 
     with tf.Graph().as_default():
         tf.set_random_seed(args.seed)
-        global_step = tf.Variable(0, trainable=False)
+        global_step = tf.Variable(0, trainable=False, name='global_step')
 
         # Placeholder for the learning rate
         learning_rate_placeholder = tf.placeholder(tf.float32, name='learning_rate')
@@ -129,6 +132,7 @@ def main(args):
             phase_train=phase_train_placeholder, bottleneck_layer_size=args.embedding_size,
             weight_decay=args.weight_decay)
         embeddings = tf.nn.l2_normalize(prelogits, 1, 1e-10, name='embeddings')
+        triplet = Triplet()
         triplet_loss = triplet.triplet_loss(embeddings, args.embedding_size, args.alpha)
 
         # begin: domain adaptation loss
@@ -161,12 +165,27 @@ def main(args):
 
         # Calculate the total losses
         regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-
         total_loss = tf.add_n([triplet_loss] + [domain_adaptation_loss] + regularization_losses , name='total_loss')
 
-        # Build a Graph that trains the model with one batch of examples and updates the model parameters
-        train_op = facenet.train(total_loss, global_step, args.optimizer,
-            learning_rate, args.moving_average_decay, tf.global_variables())
+        # # Build a Graph that trains the model with one batch of examples and updates the model parameters
+        # train_op = facenet.train(total_loss, global_step, args.optimizer,
+        #     learning_rate, args.moving_average_decay, tf.global_variables())
+        # split train into 2 parts: compute gradient and apply gradient
+        # logger.debug('all_variables len: %d' % (len(tf.all_variables())))
+        # logger.debug('global_variables len: %d' % (len(tf.global_variables())))
+        # logger.debug('local_variables len: %d' % (len(tf.local_variables())))
+        # logger.debug('trainable_variables len: %d' % (len(tf.trainable_variables())))
+        # for var in tf.trainable_variables():
+        #     logger.debug(var)
+        trained_vars = tf.trainable_variables()
+        opt = facenet.get_optimizer(args.optimizer, learning_rate)
+        grads_and_vars = facenet.compute_gradients(opt, total_loss)
+        # grads = facenet.compute_gradients_excluding_vars(total_loss)
+        grads, vars = zip(*grads_and_vars)
+        grads = [g if g is not None else tf.zeros_like(v)
+                 for g, v in zip(grads, vars)]
+        gradient_placeholder = [tf.placeholder(tf.float32) for _ in xrange(len(trained_vars))]
+        apply_gradient_op = facenet.apply_gradients(opt, zip(gradient_placeholder, trained_vars), global_step, args.moving_average_decay)
 
         # Create a saver
         saver = tf.train.Saver(tf.trainable_variables(), max_to_keep=10)
@@ -204,10 +223,10 @@ def main(args):
                 step = sess.run(global_step, feed_dict=None)
                 epoch = step // args.epoch_size
                 # Train for one epoch
-                triplet.train(args, sess, supervised_dataset, unsupervised_dataset, epoch,
+                triplet.train(args, sess, args.data_source, supervised_dataset, unsupervised_dataset, epoch,
                       image_paths_placeholder, labels_placeholder, source_image_paths_placeholder, target_image_paths_placeholder, labels_batch,
                       batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, domain_enqueue_op, global_step,
-                      embeddings, total_loss, train_op, summary_op, summary_writer, args.learning_rate_schedule_file,
+                      embeddings, total_loss, grads, gradient_placeholder, apply_gradient_op, summary_op, summary_writer, args.learning_rate_schedule_file,
                       args.embedding_size, triplet_loss, domain_adaptation_loss)
 
                 # Save variables and the metagraph if it doesn't exist already
@@ -329,7 +348,7 @@ def parse_arguments(argv):
     parser.add_argument('--images_per_person_assoc', type=int,
         help='Number of images per person.', default=10)
     parser.add_argument('--epoch_size', type=int,
-        help='Number of batches per epoch.', default=900)
+        help='Number of batches per epoch.', default=1000)
     parser.add_argument('--alpha', type=float,
         help='Positive to negative triplet distance margin.', default=0.2)
     parser.add_argument('--embedding_size', type=int,
@@ -373,6 +392,10 @@ def parse_arguments(argv):
         help='The file containing the pairs to use for validation.')
     parser.add_argument('--val_dir', type=str, default='/data/yanhong.jia/datasets/facenet/datasets_for_train/valid_24peo_3D+camera',
         help='Path to the data directory containing aligned face patches.')
+    parser.add_argument('--data_source', type=str, choices=['SINGLE', 'MULTIPLE'],
+        help='whether or not there are subdirs under data_dir', default='SINGLE')
+    parser.add_argument('--unsupervise', type=str, choices=['WITHOUT', 'MMD', 'DANN'],
+        help='whether of not unsupervised loss is added', default='WITHOUT')
     return parser.parse_args(argv)
   
 
