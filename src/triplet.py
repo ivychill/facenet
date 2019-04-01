@@ -95,10 +95,10 @@ class Triplet(object):
             triplet_paths_array = np.reshape(np.expand_dims(np.array(triplet_paths), 1), (-1, 3))
             sess.run(enqueue_op, {image_paths_placeholder: triplet_paths_array, labels_placeholder: labels_array})
 
-            source_image_paths, target_image_patchs = self.sample_unsupervised_dataset(unsupervised_dataset,
+            source_image_paths, target_image_paths = self.sample_unsupervised_dataset(unsupervised_dataset,
                                                                                   nrof_batches * args.batch_size//2)
             source_image_paths_array = np.expand_dims(np.array(source_image_paths), 1)
-            target_image_paths_array = np.expand_dims(np.array(target_image_patchs), 1)
+            target_image_paths_array = np.expand_dims(np.array(target_image_paths), 1)
             sess.run(domain_enqueue_op, {source_image_paths_placeholder: source_image_paths_array,
                                          target_image_paths_placeholder: target_image_paths_array})
 
@@ -135,6 +135,7 @@ class Triplet(object):
             summary_writer.add_summary(summary, step)
             self._round += 1
             if self._round % 3 == 0:
+                logger.info("apply_gradient...")
                 feed_dict = {learning_rate_placeholder: lr}
                 feed_dict_grad = {grad_placeholder: grad for grad_placeholder, grad in zip(gradient_placeholder, self.gradient_buffer)}
                 feed_dict.update(feed_dict_grad)

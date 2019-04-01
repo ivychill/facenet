@@ -172,6 +172,7 @@ def create_domain_input_pipeline(input_queue, args, batch_size_placeholder):
             # pylint: disable=no-member
             image.set_shape((args.image_size, args.image_size) + (3,))
             target_images.append(tf.image.per_image_standardization(image))
+
         images_list.append([source_images, target_images])
 
     source_image_batch, target_image_batch = tf.train.batch_join(
@@ -180,4 +181,5 @@ def create_domain_input_pipeline(input_queue, args, batch_size_placeholder):
         enqueue_many=True,
         capacity=4 * args.nrof_preprocess_threads * args.batch_size,
         allow_smaller_final_batch=True)
+
     return source_image_batch, target_image_batch

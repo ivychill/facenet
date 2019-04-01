@@ -36,7 +36,7 @@ import numpy as np
 import importlib
 import argparse
 from domain_separation import losses
-from log_config import logger
+from log_config import *
 from tensorflow.python.ops import data_flow_ops
 from six.moves import xrange
 from sklearn import metrics
@@ -61,6 +61,7 @@ def main(args):
     log_dir = os.path.join(os.path.expanduser(args.logs_base_dir), subdir)
     if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
         os.makedirs(log_dir)
+    set_logger(logger, log_dir)
     model_dir = os.path.join(os.path.expanduser(args.models_base_dir), subdir)
     if not os.path.isdir(model_dir):  # Create the model directory if it doesn't exist
         os.makedirs(model_dir)
@@ -134,36 +135,35 @@ def main(args):
         embeddings = tf.nn.l2_normalize(prelogits, 1, 1e-10, name='embeddings')
         triplet = Triplet()
         triplet_loss = triplet.triplet_loss(embeddings, args.embedding_size, args.alpha)
+        domain_adaptation_loss = tf.constant(0.0)
+        if args.unsupervise != 'NONE':
+            # begin: domain adaptation loss
+            domain_input_queue = data_flow_ops.FIFOQueue(capacity=100000,
+                                                         dtypes=[tf.string, tf.string],
+                                                         shapes=[(1,), (1,)],
+                                                         shared_name=None, name=None)
+            domain_enqueue_op = domain_input_queue.enqueue_many(
+                [source_image_paths_placeholder, target_image_paths_placeholder], name='domain_enqueue_op')
+            source_image_batch, target_image_batch = dataset.create_domain_input_pipeline(domain_input_queue, args,
+                                                                                  batch_size_placeholder)
+            source_image_batch = tf.identity(source_image_batch, 'source_image_batch')
+            target_image_batch = tf.identity(target_image_batch, 'target_image_batch')
+            source_prelogits, source_end_points = network.inference(source_image_batch, args.keep_probability,
+                                                     phase_train=phase_train_placeholder,
+                                                     bottleneck_layer_size=args.embedding_size,
+                                                     weight_decay=args.weight_decay, reuse=True)
+            target_prelogits, target_end_points = network.inference(target_image_batch, args.keep_probability,
+                                                     phase_train=phase_train_placeholder,
+                                                     bottleneck_layer_size=args.embedding_size,
+                                                     weight_decay=args.weight_decay, reuse=True)
+            # multiplier 1.0 may not be the best
+            if args.unsupervise == 'MMD':
+                domain_adaptation_loss = 1.0 * losses.mmd_loss(source_end_points['PreLogitsFlatten'], target_end_points['PreLogitsFlatten'], 1.0)
+            elif args.unsupervise == 'DANN':
+                domain_adaptation_loss = 0.1 * losses.dann_loss(source_end_points['PreLogitsFlatten'], target_end_points['PreLogitsFlatten'], 1.0)
+            tf.add_to_collection('losses', domain_adaptation_loss)
+            # end: domain adaptation loss
 
-        # begin: domain adaptation loss
-        domain_input_queue = data_flow_ops.FIFOQueue(capacity=1000000,
-                                                     dtypes=[tf.string, tf.string],
-                                                     shapes=[(1,), (1,)],
-                                                     shared_name=None, name=None)
-        domain_enqueue_op = domain_input_queue.enqueue_many(
-            [source_image_paths_placeholder, target_image_paths_placeholder], name='domain_enqueue_op')
-        source_image_batch, target_image_batch = dataset.create_domain_input_pipeline(domain_input_queue, args,
-                                                                              batch_size_placeholder)
-        source_image_batch = tf.identity(source_image_batch, 'source_image_batch')
-        target_image_batch = tf.identity(target_image_batch, 'target_image_batch')
-        _, source_end_points = network.inference(source_image_batch, args.keep_probability,
-                                                 phase_train=phase_train_placeholder,
-                                                 bottleneck_layer_size=args.embedding_size,
-                                                 weight_decay=args.weight_decay, reuse=True)
-        _, target_end_points = network.inference(target_image_batch, args.keep_probability,
-                                                 phase_train=phase_train_placeholder,
-                                                 bottleneck_layer_size=args.embedding_size,
-                                                 weight_decay=args.weight_decay, reuse=True)
-        # multiplier 1.0 may not be the best
-        domain_adaptation_loss = 1.0 * losses.mmd_loss(source_end_points['PreLogitsFlatten'], target_end_points['PreLogitsFlatten'], 1.0)
-        tf.add_to_collection('losses', domain_adaptation_loss)
-        # end: domain adaptation loss
-
-        learning_rate = tf.train.exponential_decay(learning_rate_placeholder, global_step,
-            args.learning_rate_decay_epochs*args.epoch_size, args.learning_rate_decay_factor, staircase=True)
-        tf.summary.scalar('learning_rate', learning_rate)
-
-        # Calculate the total losses
         regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
         total_loss = tf.add_n([triplet_loss] + [domain_adaptation_loss] + regularization_losses , name='total_loss')
 
@@ -177,6 +177,9 @@ def main(args):
         # logger.debug('trainable_variables len: %d' % (len(tf.trainable_variables())))
         # for var in tf.trainable_variables():
         #     logger.debug(var)
+        learning_rate = tf.train.exponential_decay(learning_rate_placeholder, global_step,
+            args.learning_rate_decay_epochs*args.epoch_size, args.learning_rate_decay_factor, staircase=True)
+        tf.summary.scalar('learning_rate', learning_rate)
         trained_vars = tf.trainable_variables()
         opt = facenet.get_optimizer(args.optimizer, learning_rate)
         grads_and_vars = facenet.compute_gradients(opt, total_loss)
@@ -221,7 +224,7 @@ def main(args):
             # Training and validation loop
             while epoch < args.max_nrof_epochs:
                 step = sess.run(global_step, feed_dict=None)
-                epoch = step // args.epoch_size
+                # epoch = step // args.epoch_size
                 # Train for one epoch
                 triplet.train(args, sess, args.data_source, supervised_dataset, unsupervised_dataset, epoch,
                       image_paths_placeholder, labels_placeholder, source_image_paths_placeholder, target_image_paths_placeholder, labels_batch,
@@ -241,6 +244,7 @@ def main(args):
                     evaluate(sess, val_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder,
                              batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, val_actual_issame,
                              args.batch_size, args.lfw_nrof_folds, log_dir, 'val',epoch, summary_writer, args.embedding_size)
+                epoch += 1
 
     return model_dir
 
@@ -322,6 +326,8 @@ def parse_arguments(argv):
         help='Upper bound on the amount of GPU memory that will be used by the process.', default=1.0)
     parser.add_argument('--pretrained_model', type=str,
         help='Load a pretrained model before training starts.')
+    parser.add_argument('--data_source', type=str, choices=['SINGLE', 'MULTIPLE'],
+        help='whether or not there are subdirs under data_dir', default='SINGLE')
     parser.add_argument('--data_dir', type=str,
         help='Path to the data directory containing aligned face patches.',
         default='~/datasets/casia/casia_maxpy_mtcnnalign_182_160')
@@ -360,6 +366,8 @@ def parse_arguments(argv):
         help='Performs random horizontal flipping of training images.', action='store_true')
     parser.add_argument('--keep_probability', type=float,
         help='Keep probability of dropout for the fully connected layer(s).', default=1.0)
+    parser.add_argument('--unsupervise', type=str, choices=['NONE', 'MMD', 'DANN'],
+        help='whether of not unsupervised loss is added', default='WITHOUT')
     parser.add_argument('--weight_decay', type=float,
         help='L2 weight regularization.', default=0.0)
     parser.add_argument('--optimizer', type=str, choices=['ADAGRAD', 'ADADELTA', 'ADAM', 'RMSPROP', 'MOM'],
@@ -392,10 +400,6 @@ def parse_arguments(argv):
         help='The file containing the pairs to use for validation.')
     parser.add_argument('--val_dir', type=str, default='/data/yanhong.jia/datasets/facenet/datasets_for_train/valid_24peo_3D+camera',
         help='Path to the data directory containing aligned face patches.')
-    parser.add_argument('--data_source', type=str, choices=['SINGLE', 'MULTIPLE'],
-        help='whether or not there are subdirs under data_dir', default='SINGLE')
-    parser.add_argument('--unsupervise', type=str, choices=['WITHOUT', 'MMD', 'DANN'],
-        help='whether of not unsupervised loss is added', default='WITHOUT')
     return parser.parse_args(argv)
   
 

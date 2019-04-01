@@ -64,19 +64,19 @@ case $1 in
         python src/main_tripletloss.py \
             --logs_base_dir ./logs \
             --models_base_dir ./models/ \
-            --data_dir /data/nfs/kc/liukang/face_data/80w_camera/80w_all \
+            --data_source MULTIPLE \
+            --data_dir ./data \
             --model_def models.inception_resnet_v1 \
             --optimizer ADAM \
             --learning_rate 0.01 \
             --learning_rate_decay_epochs 10 \
             --learning_rate_decay_factor 0.8 \
-            --weight_decay 1e-4 \
             --lfw_dir /data/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_35 \
             --lfw_pairs /data/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_35/pairs.txt \
             --val_dir /data/nfs/kc/liukang/face_data/valid_150 \
             --val_pairs /data/nfs/kc/liukang/face_data/valid_150/pairs.txt \
             --max_nrof_epochs 5000  \
-            --people_per_batch 45 \
+            --people_per_batch 60 \
             --images_per_person 10 \
             --gpu_memory_fraction 1.0
         ;;
@@ -88,7 +88,7 @@ case $1 in
         python src/main_tripletloss.py \
             --logs_base_dir ./logs \
             --models_base_dir ./models/ \
-            --data_dir ./data \
+            --data_dir /data/nfs/kc/liukang/face_data/80w_camera/80w_all \
             --model_def models.inception_resnet_v1 \
             --pretrained_model ../../../models/facenet/20170512-110547/model-20170512-110547.ckpt-250000 \
             --optimizer ADAM \
