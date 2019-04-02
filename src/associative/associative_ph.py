@@ -29,7 +29,7 @@ class Associative(object):
         self.model = SemisupModel(network.inference, NUM_LABELS, IMAGE_SHAPE, args.keep_probability)
 
     def loss(self):
-        # sample array index instead of array, because index of supervise and unsupervise should be identical
+        # sample array index instead of array, because index of supervised and unsupervised should be identical
         sampled_class_index = random.sample(np.arange(len(self.supervise_dataset)), self.args.people_per_batch)
         t_sup_images, t_sup_labels = self.sample_data(self.supervise_dataset, sampled_class_index)
         t_unsup_images, _ = self.sample_data(self.unsupervise_dataset, sampled_class_index)

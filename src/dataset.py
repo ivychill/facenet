@@ -2,7 +2,7 @@
 import os
 import facenet
 import tensorflow as tf
-from log_config import logger
+# from log_config import logger
 
 
 # dataset: [('bob',['bob_01.png',...]),...]
@@ -94,14 +94,22 @@ def get_unsupervised_dataset(path):
     return domain_unsupervised_dataset
 
 
-def get_dataset(path, data_source):
+# def get_dataset(path, data_source):
+#     if data_source == 'SINGLE':
+#         supervised_dataset = get_supervised_dataset_single(path)
+#     else:
+#         supervised_dataset = get_supervised_dataset_multiple(path)
+#
+#     unsupervised_datset = get_unsupervised_dataset(path)
+#     return supervised_dataset, unsupervised_datset
+
+
+def get_supervised_dataset(path, data_source):
     if data_source == 'SINGLE':
         supervised_dataset = get_supervised_dataset_single(path)
     else:
         supervised_dataset = get_supervised_dataset_multiple(path)
-
-    unsupervised_datset = get_unsupervised_dataset(path)
-    return supervised_dataset, unsupervised_datset
+    return supervised_dataset
 
 
 def create_input_pipeline(input_queue, args, batch_size_placeholder):

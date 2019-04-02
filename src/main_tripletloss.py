@@ -36,7 +36,7 @@ import numpy as np
 import importlib
 import argparse
 from domain_separation import losses
-from log_config import *
+from log import *
 from tensorflow.python.ops import data_flow_ops
 from six.moves import xrange
 from sklearn import metrics
@@ -49,12 +49,9 @@ import tsne_viz
 import dataset
 
 
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS"
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-
-
 def main(args):
-
+    logger.info("train_tripletloss......")
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     network = importlib.import_module(args.model_def)
 
     subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
@@ -74,7 +71,11 @@ def main(args):
     facenet.store_revision_info(src_path, log_dir, ' '.join(sys.argv))
 
     np.random.seed(seed=args.seed)
-    supervised_dataset, unsupervised_dataset = dataset.get_dataset(args.data_dir, args.data_source)
+    # supervised_dataset, unsupervised_dataset = dataset.get_dataset(args.data_dir, args.data_source)
+    supervised_dataset = dataset.get_supervised_dataset(args.data_dir, args.data_source)
+    unsupervised_dataset = {}
+    if args.data_source == 'MULTIPLE' and args.unsupervised != 'NONE':
+        unsupervised_dataset = dataset.get_dataset(args.data_dir, args.data_source)
     # logger.debug("supervised_dataset: %s, unsupervised_dataset: %s" % (supervised_dataset, unsupervised_dataset))
     # logger.debug("supervised_dataset['id']: %d" % (len(supervised_dataset['id'])))
     # logger.debug("supervised_dataset['camera']: %d" % (len(supervised_dataset['camera'])))
@@ -136,7 +137,8 @@ def main(args):
         triplet = Triplet()
         triplet_loss = triplet.triplet_loss(embeddings, args.embedding_size, args.alpha)
         domain_adaptation_loss = tf.constant(0.0)
-        if args.unsupervise != 'NONE':
+        domain_enqueue_op = None
+        if args.data_source == 'MULTIPLE' and args.unsupervised != 'NONE':
             # begin: domain adaptation loss
             domain_input_queue = data_flow_ops.FIFOQueue(capacity=100000,
                                                          dtypes=[tf.string, tf.string],
@@ -157,9 +159,9 @@ def main(args):
                                                      bottleneck_layer_size=args.embedding_size,
                                                      weight_decay=args.weight_decay, reuse=True)
             # multiplier 1.0 may not be the best
-            if args.unsupervise == 'MMD':
+            if args.unsupervised == 'MMD':
                 domain_adaptation_loss = 1.0 * losses.mmd_loss(source_end_points['PreLogitsFlatten'], target_end_points['PreLogitsFlatten'], 1.0)
-            elif args.unsupervise == 'DANN':
+            elif args.unsupervised == 'DANN':
                 domain_adaptation_loss = 0.1 * losses.dann_loss(source_end_points['PreLogitsFlatten'], target_end_points['PreLogitsFlatten'], 1.0)
             tf.add_to_collection('losses', domain_adaptation_loss)
             # end: domain adaptation loss
@@ -226,7 +228,7 @@ def main(args):
                 step = sess.run(global_step, feed_dict=None)
                 # epoch = step // args.epoch_size
                 # Train for one epoch
-                triplet.train(args, sess, args.data_source, supervised_dataset, unsupervised_dataset, epoch,
+                triplet.train(args, sess, args.data_source, args.unsupervised, supervised_dataset, unsupervised_dataset, epoch,
                       image_paths_placeholder, labels_placeholder, source_image_paths_placeholder, target_image_paths_placeholder, labels_batch,
                       batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, domain_enqueue_op, global_step,
                       embeddings, total_loss, grads, gradient_placeholder, apply_gradient_op, summary_op, summary_writer, args.learning_rate_schedule_file,
@@ -366,7 +368,7 @@ def parse_arguments(argv):
         help='Performs random horizontal flipping of training images.', action='store_true')
     parser.add_argument('--keep_probability', type=float,
         help='Keep probability of dropout for the fully connected layer(s).', default=1.0)
-    parser.add_argument('--unsupervise', type=str, choices=['NONE', 'MMD', 'DANN'],
+    parser.add_argument('--unsupervised', type=str, choices=['NONE', 'MMD', 'DANN'],
         help='whether of not unsupervised loss is added', default='WITHOUT')
     parser.add_argument('--weight_decay', type=float,
         help='L2 weight regularization.', default=0.0)
@@ -400,6 +402,8 @@ def parse_arguments(argv):
         help='The file containing the pairs to use for validation.')
     parser.add_argument('--val_dir', type=str, default='/data/yanhong.jia/datasets/facenet/datasets_for_train/valid_24peo_3D+camera',
         help='Path to the data directory containing aligned face patches.')
+    parser.add_argument('--gpu', type=str,
+        help='gpu id', default='0')
     return parser.parse_args(argv)
   
 

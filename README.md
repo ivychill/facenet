@@ -31,7 +31,7 @@
             --data_dir ./data \			        # 照片目录, 下文详解.
             --model_def models.inception_resnet_v1 \		# 网络结构, 一般不需要修改.
             --pretrained_model ../../../models/facenet/20170512-110547/model-20170512-110547.ckpt-250000 \	                # 加载的模型文件
-            --unsupervise MMD \               # 非监督学习loss, 只可取三者之一: NONE, MMD和DANN.
+            --unsupervised MMD \               # 非监督学习loss, 只可取三者之一: NONE, MMD和DANN.
             --weight_decay 1e-4 \	            # weight_decay regulation的系数
             --optimizer ADAM \	                # 优化器
             --learning_rate 0.01 \	            # 学习率

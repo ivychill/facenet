@@ -35,7 +35,7 @@ import itertools
 import facenet
 from six.moves import xrange
 import random
-from log_config import logger
+from log import logger
 
 
 class Triplet(object):
@@ -43,8 +43,9 @@ class Triplet(object):
         self._round = 0       # get from different data source round-robin
         self.nrof_trainable_vars = len(tf.trainable_variables())
         self.gradient_buffer = [0.0] * self.nrof_trainable_vars
+        self.nrof_gradients = 0
 
-    def train(self, args, sess, data_source, supervised_dataset, unsupervised_dataset, epoch,
+    def train(self, args, sess, data_source, unsupervised, supervised_dataset, unsupervised_dataset, epoch,
               image_paths_placeholder, labels_placeholder, source_image_paths_placeholder, target_image_paths_placeholder, labels_batch,
               batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, domain_enqueue_op, global_step,
               embeddings, loss, gradients, gradient_placeholder, apply_gradient_op, summary_op, summary_writer, learning_rate_schedule_file,
@@ -94,14 +95,15 @@ class Triplet(object):
             labels_array = np.reshape(np.arange(len(triplet_paths)), (-1, 3))
             triplet_paths_array = np.reshape(np.expand_dims(np.array(triplet_paths), 1), (-1, 3))
             sess.run(enqueue_op, {image_paths_placeholder: triplet_paths_array, labels_placeholder: labels_array})
-
-            source_image_paths, target_image_paths = self.sample_unsupervised_dataset(unsupervised_dataset,
+            if args.data_source == 'MULTIPLE' and args.unsupervised != 'NONE':
+                source_image_paths, target_image_paths = self.sample_unsupervised_dataset(unsupervised_dataset,
                                                                                   nrof_batches * args.batch_size//2)
-            source_image_paths_array = np.expand_dims(np.array(source_image_paths), 1)
-            target_image_paths_array = np.expand_dims(np.array(target_image_paths), 1)
-            sess.run(domain_enqueue_op, {source_image_paths_placeholder: source_image_paths_array,
+                logger.debug("before domain_enqueue_op")
+                source_image_paths_array = np.expand_dims(np.array(source_image_paths), 1)
+                target_image_paths_array = np.expand_dims(np.array(target_image_paths), 1)
+                sess.run(domain_enqueue_op, {source_image_paths_placeholder: source_image_paths_array,
                                          target_image_paths_placeholder: target_image_paths_array})
-
+                logger.debug("after domain_enqueue_op")
             nrof_examples = len(triplet_paths)
             train_time = 0
             i = 0
@@ -119,11 +121,12 @@ class Triplet(object):
                     [loss, gradients, global_step, embeddings, labels_batch, triplet_loss, domain_adaptation_loss], feed_dict=feed_dict)
                 # grads, _ = zip(*g_and_v)
                 self.gradient_buffer = [sum(x) for x in zip(self.gradient_buffer, grads)]
+                self.nrof_gradients += 1
                 emb_array[lab, :] = emb
                 loss_array[i] = err
                 duration = time.time() - start_time
-                logger.debug('Epoch: [%d][%d/%d]\tRound: [%d]\tTime %.3f\tLoss %f\ttriplet_Loss %f\tdomain_adaptation_loss %f' %
-                      (epoch, batch_number + 1, args.epoch_size, self._round, duration, err, triplet_loss_, domain_adaptation_loss_))
+                logger.debug('Epoch [%d][%d/%d]\tRound [%d]\tgrad: [%d]\tTime %.3f\tLoss %f\ttriplet_Loss %f\tdomain_adaptation_loss %f' %
+                      (epoch, batch_number + 1, args.epoch_size, self._round, self.nrof_gradients, duration, err, triplet_loss_, domain_adaptation_loss_))
                 batch_number += 1
                 i += 1
                 train_time += duration
@@ -136,11 +139,13 @@ class Triplet(object):
             self._round += 1
             if self._round % 3 == 0:
                 logger.info("apply_gradient...")
+                self.gradient_buffer = map(lambda x: x/self.nrof_gradients, self.gradient_buffer)
                 feed_dict = {learning_rate_placeholder: lr}
                 feed_dict_grad = {grad_placeholder: grad for grad_placeholder, grad in zip(gradient_placeholder, self.gradient_buffer)}
                 feed_dict.update(feed_dict_grad)
                 sess.run(apply_gradient_op, feed_dict=feed_dict)
                 self.gradient_buffer = [0.0] * self.nrof_trainable_vars
+                self.nrof_gradients = 0
         return step
 
 
