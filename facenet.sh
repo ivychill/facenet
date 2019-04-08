@@ -81,6 +81,38 @@ case $1 in
             --gpu 1
         ;;
 
+    train_hvd)
+        export PYTHONPATH=$(pwd)/src
+        HOROVOD_TIMELINE=./logs/timeline.json \
+            mpirun -np 4 \
+            -H localhost:4 \
+            -bind-to none -map-by slot \
+            -x NCCL_DEBUG=INFO -x LD_LIBRARY_PATH -x PATH \
+            -mca pml ob1 -x HOROVOD_MPI_THREADS_DISABLE=1 \
+        python src/main_tripletloss.py \
+            --logs_base_dir ./logs \
+            --models_base_dir ./models/ \
+            --data_source MULTIPLE \
+            --data_dir ./data \
+            --model_def models.inception_resnet_v1 \
+            --optimizer ADAM \
+            --learning_rate 0.05 \
+            --learning_rate_decay_epochs 10 \
+            --learning_rate_decay_factor 0.8 \
+            --unsupervised NONE \
+            --lfw_dir /data/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_35 \
+            --lfw_pairs /data/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_35/pairs.txt \
+            --val_dir /data/nfs/kc/liukang/face_data/valid_150 \
+            --val_pairs /data/nfs/kc/liukang/face_data/valid_150/pairs.txt \
+            --max_nrof_epochs 5000  \
+            --people_per_batch 60 \
+            --images_per_person 10 \
+            --gpu_memory_fraction 1.0 \
+            --gpu 1 \
+            --cluster True \
+            --warmup False
+        ;;
+
     train_inc)
         export PYTHONPATH=$(pwd)/src
         python src/main_tripletloss.py \

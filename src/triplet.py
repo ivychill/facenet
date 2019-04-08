@@ -50,14 +50,12 @@ class Triplet(object):
               batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, domain_enqueue_op, global_step,
               embeddings, loss, gradients, gradient_placeholder, apply_gradient_op, summary_op, summary_writer, learning_rate_schedule_file,
               embedding_size, triplet_loss, domain_adaptation_loss):
-        batch_number = 0
-
         if args.learning_rate > 0.0:
             lr = args.learning_rate
         else:
             lr = facenet.get_learning_rate_from_file(learning_rate_schedule_file, epoch)
 
-
+        batch_number = 0
         while batch_number < args.epoch_size:
             # Sample people randomly from the dataset
             image_paths, num_per_class = self.sample_people(data_source, supervised_dataset, args.people_per_batch, args.images_per_person)

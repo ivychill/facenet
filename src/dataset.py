@@ -132,7 +132,6 @@ def create_input_pipeline(input_queue, args, batch_size_placeholder):
                 image = tf.image.random_hue(image, max_delta=0.2)
                 image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
 
-
             # pylint: disable=no-member
             image.set_shape((args.image_size, args.image_size, 3))
             images.append(tf.image.per_image_standardization(image))

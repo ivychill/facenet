@@ -40,6 +40,7 @@ import random
 import re
 from tensorflow.python.platform import gfile
 from six import iteritems
+import horovod.tensorflow as hvd
 
 def triplet_loss(anchor, positive, negative, alpha):
     """Calculate the triplet loss according to the FaceNet paper
@@ -178,28 +179,47 @@ def _add_loss_summaries(total_loss):
     return loss_averages_op
 
 # split train into 2 parts: compute gradient and apply gradient
-def train(total_loss, global_step, optimizer, learning_rate, moving_average_decay, update_gradient_vars, log_histograms=True):
-    opt = get_optimizer(optimizer, learning_rate)
+def train(total_loss, global_step, optimizer, learning_rate, moving_average_decay, cluster, warmup, log_histograms=True):
+    opt = get_optimizer(optimizer, learning_rate, cluster, warmup)
     grads_and_vars = compute_gradients(opt, total_loss)
     train_op = apply_gradients(opt, grads_and_vars, global_step, moving_average_decay, log_histograms)
 
     return train_op
 
-def get_optimizer(optimizer, learning_rate):
-    if optimizer == 'SGD':
-        opt = tf.train.GradientDescentOptimizer(learning_rate)
-    elif optimizer == 'ADAGRAD':
-        opt = tf.train.AdagradOptimizer(learning_rate)
-    elif optimizer == 'ADADELTA':
-        opt = tf.train.AdadeltaOptimizer(learning_rate, rho=0.9, epsilon=1e-6)
-    elif optimizer == 'ADAM':
-        opt = tf.train.AdamOptimizer(learning_rate, beta1=0.9, beta2=0.999, epsilon=0.1)
-    elif optimizer == 'RMSPROP':
-        opt = tf.train.RMSPropOptimizer(learning_rate, decay=0.9, momentum=0.9, epsilon=1.0)
-    elif optimizer == 'MOM':
-        opt = tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
+def get_optimizer(optimizer, learning_rate, cluster, warmup):
+    if warmup:
+        if optimizer == 'SGD':
+            opt = tf.train.GradientDescentOptimizer(learning_rate * hvd.size())
+        elif optimizer == 'ADAGRAD':
+            opt = tf.train.AdagradOptimizer(learning_rate * hvd.size())
+        elif optimizer == 'ADADELTA':
+            opt = tf.train.AdadeltaOptimizer(learning_rate * hvd.size(), rho=0.9, epsilon=1e-6)
+        elif optimizer == 'ADAM':
+            opt = tf.train.AdamOptimizer(learning_rate * hvd.size(), beta1=0.9, beta2=0.999, epsilon=0.1)
+        elif optimizer == 'RMSPROP':
+            opt = tf.train.RMSPropOptimizer(learning_rate * hvd.size(), decay=0.9, momentum=0.9, epsilon=1.0)
+        elif optimizer == 'MOM':
+            opt = tf.train.MomentumOptimizer(learning_rate * hvd.size(), 0.9, use_nesterov=True)
+        else:
+            raise ValueError('Invalid optimization algorithm')
     else:
-        raise ValueError('Invalid optimization algorithm')
+        if optimizer == 'SGD':
+            opt = tf.train.GradientDescentOptimizer(learning_rate)
+        elif optimizer == 'ADAGRAD':
+            opt = tf.train.AdagradOptimizer(learning_rate)
+        elif optimizer == 'ADADELTA':
+            opt = tf.train.AdadeltaOptimizer(learning_rate, rho=0.9, epsilon=1e-6)
+        elif optimizer == 'ADAM':
+            opt = tf.train.AdamOptimizer(learning_rate, beta1=0.9, beta2=0.999, epsilon=0.1)
+        elif optimizer == 'RMSPROP':
+            opt = tf.train.RMSPropOptimizer(learning_rate, decay=0.9, momentum=0.9, epsilon=1.0)
+        elif optimizer == 'MOM':
+            opt = tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
+        else:
+            raise ValueError('Invalid optimization algorithm')
+
+    if cluster:
+        opt = hvd.DistributedOptimizer(opt)
 
     return opt
 

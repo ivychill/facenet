@@ -45,32 +45,48 @@ from scipy import interpolate
 import facenet
 import lfw
 from triplet import Triplet
-import tsne_viz
+# import tsne_viz
 import dataset
-
+import horovod.tensorflow as hvd
 
 def main(args):
     logger.info("train_tripletloss......")
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
-    network = importlib.import_module(args.model_def)
+    if args.cluster:
+        hvd.init()
+        rank = hvd.rank()
+        subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
+        log_dir = os.path.join(os.path.expanduser(args.logs_base_dir), subdir+'_'+str(rank))
+        if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
+            os.makedirs(log_dir)
+        set_logger(logger, log_dir)
+        if rank == 0:
+            model_dir = os.path.join(os.path.expanduser(args.models_base_dir), subdir)
+            if not os.path.isdir(model_dir):  # Create the model directory if it doesn't exist
+                os.makedirs(model_dir)
+            # Write arguments to a text file
+            facenet.write_arguments_to_file(args, os.path.join(log_dir, 'arguments.txt'))
+            # Store some git revision info in a text file in the log directory
+            src_path,_ = os.path.split(os.path.realpath(__file__))
+            facenet.store_revision_info(src_path, log_dir, ' '.join(sys.argv))
+            np.random.seed(seed=rank)
 
-    subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
-    log_dir = os.path.join(os.path.expanduser(args.logs_base_dir), subdir)
-    if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
-        os.makedirs(log_dir)
-    set_logger(logger, log_dir)
-    model_dir = os.path.join(os.path.expanduser(args.models_base_dir), subdir)
-    if not os.path.isdir(model_dir):  # Create the model directory if it doesn't exist
-        os.makedirs(model_dir)
+    else:
+        subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
+        log_dir = os.path.join(os.path.expanduser(args.logs_base_dir), subdir)
+        if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
+            os.makedirs(log_dir)
+        set_logger(logger, log_dir)
+        model_dir = os.path.join(os.path.expanduser(args.models_base_dir), subdir)
+        if not os.path.isdir(model_dir):  # Create the model directory if it doesn't exist
+            os.makedirs(model_dir)
+        # Write arguments to a text file
+        facenet.write_arguments_to_file(args, os.path.join(log_dir, 'arguments.txt'))
+        # Store some git revision info in a text file in the log directory
+        src_path, _ = os.path.split(os.path.realpath(__file__))
+        facenet.store_revision_info(src_path, log_dir, ' '.join(sys.argv))
+        np.random.seed(seed=args.seed)
 
-    # Write arguments to a text file
-    facenet.write_arguments_to_file(args, os.path.join(log_dir, 'arguments.txt'))
-
-    # Store some git revision info in a text file in the log directory
-    src_path,_ = os.path.split(os.path.realpath(__file__))
-    facenet.store_revision_info(src_path, log_dir, ' '.join(sys.argv))
-
-    np.random.seed(seed=args.seed)
     # supervised_dataset, unsupervised_dataset = dataset.get_dataset(args.data_dir, args.data_source)
     supervised_dataset = dataset.get_supervised_dataset(args.data_dir, args.data_source)
     unsupervised_dataset = {}
@@ -130,6 +146,7 @@ def main(args):
         image_batch = tf.identity(image_batch, 'image_batch')
         image_batch = tf.identity(image_batch, 'input')
         labels_batch = tf.identity(labels_batch, 'label_batch')
+        network = importlib.import_module(args.model_def)
         prelogits, _ = network.inference(image_batch, args.keep_probability,
             phase_train=phase_train_placeholder, bottleneck_layer_size=args.embedding_size,
             weight_decay=args.weight_decay)
@@ -171,7 +188,7 @@ def main(args):
 
         # # Build a Graph that trains the model with one batch of examples and updates the model parameters
         # train_op = facenet.train(total_loss, global_step, args.optimizer,
-        #     learning_rate, args.moving_average_decay, tf.global_variables())
+        #     learning_rate, args.moving_average_decay, args.cluster, args.warmup)
         # split train into 2 parts: compute gradient and apply gradient
         # logger.debug('all_variables len: %d' % (len(tf.all_variables())))
         # logger.debug('global_variables len: %d' % (len(tf.global_variables())))
@@ -179,11 +196,14 @@ def main(args):
         # logger.debug('trainable_variables len: %d' % (len(tf.trainable_variables())))
         # for var in tf.trainable_variables():
         #     logger.debug(var)
-        learning_rate = tf.train.exponential_decay(learning_rate_placeholder, global_step,
-            args.learning_rate_decay_epochs*args.epoch_size, args.learning_rate_decay_factor, staircase=True)
+        if args.warmup:
+            learning_rate = get_learning_rate(args, learning_rate_placeholder, global_step)
+        else:
+            learning_rate = tf.train.exponential_decay(learning_rate_placeholder, global_step,
+                args.learning_rate_decay_epochs*args.epoch_size, args.learning_rate_decay_factor, staircase=True)
         tf.summary.scalar('learning_rate', learning_rate)
         trained_vars = tf.trainable_variables()
-        opt = facenet.get_optimizer(args.optimizer, learning_rate)
+        opt = facenet.get_optimizer(args.optimizer, learning_rate, args.cluster, args.warmup)
         grads_and_vars = facenet.compute_gradients(opt, total_loss)
         # grads = facenet.compute_gradients_excluding_vars(total_loss)
         grads, vars = zip(*grads_and_vars)
@@ -201,9 +221,17 @@ def main(args):
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_memory_fraction)
         sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_memory_fraction, allow_growth=True)
+        if args.cluster:
+            gpu_options.visible_device_list = str(hvd.local_rank())
+        config = tf.ConfigProto(gpu_options=gpu_options)
+        sess = tf.Session(config=config)
+
         # Initialize variables
         sess.run(tf.global_variables_initializer(), feed_dict={phase_train_placeholder:True})
         sess.run(tf.local_variables_initializer(), feed_dict={phase_train_placeholder:True})
+        if args.cluster:
+            sess.run(hvd.broadcast_global_variables(0))
 
         summary_writer = tf.summary.FileWriter(log_dir, sess.graph)
         coord = tf.train.Coordinator()
@@ -234,9 +262,10 @@ def main(args):
                       embeddings, total_loss, grads, gradient_placeholder, apply_gradient_op, summary_op, summary_writer, args.learning_rate_schedule_file,
                       args.embedding_size, triplet_loss, domain_adaptation_loss)
 
-                # Save variables and the metagraph if it doesn't exist already
-                # save_variables_and_metagraph(sess, saver, summary_writer, model_dir, subdir, step)
-                save_variables_and_metagraph(sess, saver, summary_writer, model_dir, subdir, epoch)
+                if (args.cluster and rank == 0) or not args.cluster:
+                    # Save variables and the metagraph if it doesn't exist already
+                    # save_variables_and_metagraph(sess, saver, summary_writer, model_dir, subdir, step)
+                    save_variables_and_metagraph(sess, saver, summary_writer, model_dir, subdir, epoch)
 
                 if args.lfw_dir:
                     evaluate(sess, lfw_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder,
@@ -318,7 +347,20 @@ def save_variables_and_metagraph(sess, saver, summary_writer, model_dir, model_n
     summary.value.add(tag='time/save_variables', simple_value=save_time_variables)
     summary.value.add(tag='time/save_metagraph', simple_value=save_time_metagraph)
     summary_writer.add_summary(summary, epoch)
-    
+
+
+def get_learning_rate(args, learning_rate_placeholder, global_step):
+    first_decay_steps = args.epoch_size
+    warm_steps = int(args.warmup_epochs * args.epoch_size)
+    # first_decay_steps += warm_steps
+    learning_rate = tf.train.cosine_decay_restarts(args.learning_rate * hvd.size(), global_step - warm_steps,
+                                                   first_decay_steps,
+                                                   t_mul=1.1, m_mul=0.25, alpha=0.0001, name=None)
+    warmup_lr = learning_rate_placeholder * tf.cast(global_step, tf.float32) / tf.cast(warm_steps, tf.float32)
+    learning_rate = tf.cond(global_step < warm_steps,
+                            lambda: warmup_lr * hvd.size(), lambda: learning_rate)
+    return learning_rate
+
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
@@ -392,7 +434,6 @@ def parse_arguments(argv):
         help='File containing the learning rate schedule that is used when learning_rate is set to to -1.', default='data/learning_rate_schedule.txt')
     parser.add_argument('--nrof_preprocess_threads', type=int,
         help='Number of preprocessing (data loading and augmentation) threads.', default=4)
-    # Parameters for validation on LFW
     parser.add_argument('--lfw_pairs', type=str,
         help='The file containing the pairs to use for validation.', default='data/pairs.txt')
     parser.add_argument('--lfw_file_ext', type=str,
@@ -406,7 +447,11 @@ def parse_arguments(argv):
     parser.add_argument('--val_dir', type=str, default='/data/yanhong.jia/datasets/facenet/datasets_for_train/valid_24peo_3D+camera',
         help='Path to the data directory containing aligned face patches.')
     parser.add_argument('--gpu', type=str,
-        help='gpu id', default='0')
+        help='GPU id', default='0')
+    parser.add_argument('--cluster', type=bool,
+        help='Whether or not Data Parallel with multi GPU', default=False)
+    parser.add_argument('--warmup', type=bool,
+        help='Whether or not learning rate warmup', default=False)
     return parser.parse_args(argv)
   
 
