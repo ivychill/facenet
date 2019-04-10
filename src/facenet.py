@@ -179,15 +179,15 @@ def _add_loss_summaries(total_loss):
     return loss_averages_op
 
 # split train into 2 parts: compute gradient and apply gradient
-def train(total_loss, global_step, optimizer, learning_rate, moving_average_decay, cluster, warmup, log_histograms=True):
-    opt = get_optimizer(optimizer, learning_rate, cluster, warmup)
+def train(total_loss, global_step, optimizer, learning_rate, moving_average_decay, cluster, nrof_warmup_epochs, log_histograms=True):
+    opt = get_optimizer(optimizer, learning_rate, cluster, nrof_warmup_epochs)
     grads_and_vars = compute_gradients(opt, total_loss)
     train_op = apply_gradients(opt, grads_and_vars, global_step, moving_average_decay, log_histograms)
 
     return train_op
 
-def get_optimizer(optimizer, learning_rate, cluster, warmup):
-    if warmup:
+def get_optimizer(optimizer, learning_rate, cluster, nrof_warmup_epochs):
+    if nrof_warmup_epochs > 0:
         if optimizer == 'SGD':
             opt = tf.train.GradientDescentOptimizer(learning_rate * hvd.size())
         elif optimizer == 'ADAGRAD':

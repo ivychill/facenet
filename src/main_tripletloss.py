@@ -50,7 +50,6 @@ import dataset
 import horovod.tensorflow as hvd
 
 def main(args):
-    logger.info("train_tripletloss......")
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     if args.cluster:
         hvd.init()
@@ -70,6 +69,8 @@ def main(args):
             src_path,_ = os.path.split(os.path.realpath(__file__))
             facenet.store_revision_info(src_path, log_dir, ' '.join(sys.argv))
             np.random.seed(seed=rank)
+            logger.info('Model directory: %s' % model_dir)
+            logger.info('Log directory: %s' % log_dir)
 
     else:
         subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
@@ -86,7 +87,10 @@ def main(args):
         src_path, _ = os.path.split(os.path.realpath(__file__))
         facenet.store_revision_info(src_path, log_dir, ' '.join(sys.argv))
         np.random.seed(seed=args.seed)
+        logger.info('Model directory: %s' % model_dir)
+        logger.info('Log directory: %s' % log_dir)
 
+    logger.info("train_tripletloss......")
     # supervised_dataset, unsupervised_dataset = dataset.get_dataset(args.data_dir, args.data_source)
     supervised_dataset = dataset.get_supervised_dataset(args.data_dir, args.data_source)
     unsupervised_dataset = {}
@@ -97,8 +101,6 @@ def main(args):
     # logger.debug("supervised_dataset['camera']: %d" % (len(supervised_dataset['camera'])))
     # logger.debug("supervised_dataset['id+camera']: %d" % (len(supervised_dataset['id+camera'])))
 
-    logger.info('Model directory: %s' % model_dir)
-    logger.info('Log directory: %s' % log_dir)
     if args.pretrained_model:
         logger.info('Pre-trained model: %s' % os.path.expanduser(args.pretrained_model))
 
@@ -188,7 +190,7 @@ def main(args):
 
         # # Build a Graph that trains the model with one batch of examples and updates the model parameters
         # train_op = facenet.train(total_loss, global_step, args.optimizer,
-        #     learning_rate, args.moving_average_decay, args.cluster, args.warmup)
+        #     learning_rate, args.moving_average_decay, args.cluster, args.nrof_warmup_epochs)
         # split train into 2 parts: compute gradient and apply gradient
         # logger.debug('all_variables len: %d' % (len(tf.all_variables())))
         # logger.debug('global_variables len: %d' % (len(tf.global_variables())))
@@ -196,14 +198,14 @@ def main(args):
         # logger.debug('trainable_variables len: %d' % (len(tf.trainable_variables())))
         # for var in tf.trainable_variables():
         #     logger.debug(var)
-        if args.warmup:
+        if args.nrof_warmup_epochs > 0:
             learning_rate = get_learning_rate(args, learning_rate_placeholder, global_step)
         else:
             learning_rate = tf.train.exponential_decay(learning_rate_placeholder, global_step,
                 args.learning_rate_decay_epochs*args.epoch_size, args.learning_rate_decay_factor, staircase=True)
         tf.summary.scalar('learning_rate', learning_rate)
         trained_vars = tf.trainable_variables()
-        opt = facenet.get_optimizer(args.optimizer, learning_rate, args.cluster, args.warmup)
+        opt = facenet.get_optimizer(args.optimizer, learning_rate, args.cluster, args.nrof_warmup_epochs)
         grads_and_vars = facenet.compute_gradients(opt, total_loss)
         # grads = facenet.compute_gradients_excluding_vars(total_loss)
         grads, vars = zip(*grads_and_vars)
@@ -218,13 +220,13 @@ def main(args):
         summary_op = tf.summary.merge_all()
 
         # Start running operations on the Graph.
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_memory_fraction)
-        sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
-
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_memory_fraction, allow_growth=True)
+        # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_memory_fraction)
+        # sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
         if args.cluster:
-            gpu_options.visible_device_list = str(hvd.local_rank())
-        config = tf.ConfigProto(gpu_options=gpu_options)
+            # Pin GPU to be used to process local rank (one GPU per process)
+            config.gpu_options.visible_device_list = str(hvd.local_rank())
         sess = tf.Session(config=config)
 
         # Initialize variables
@@ -351,7 +353,7 @@ def save_variables_and_metagraph(sess, saver, summary_writer, model_dir, model_n
 
 def get_learning_rate(args, learning_rate_placeholder, global_step):
     first_decay_steps = args.epoch_size
-    warm_steps = int(args.warmup_epochs * args.epoch_size)
+    warm_steps = int(args.nrof_warmup_epochs * args.epoch_size)
     # first_decay_steps += warm_steps
     learning_rate = tf.train.cosine_decay_restarts(args.learning_rate * hvd.size(), global_step - warm_steps,
                                                    first_decay_steps,
@@ -401,7 +403,7 @@ def parse_arguments(argv):
     parser.add_argument('--images_per_person_assoc', type=int,
         help='Number of images per person.', default=10)
     parser.add_argument('--epoch_size', type=int,
-        help='Number of batches per epoch.', default=1000)
+        help='Number of batches per epoch.', default=10000)
     parser.add_argument('--alpha', type=float,
         help='Positive to negative triplet distance margin.', default=0.2)
     parser.add_argument('--embedding_size', type=int,
@@ -450,8 +452,8 @@ def parse_arguments(argv):
         help='GPU id', default='0')
     parser.add_argument('--cluster', type=bool,
         help='Whether or not Data Parallel with multi GPU', default=False)
-    parser.add_argument('--warmup', type=bool,
-        help='Whether or not learning rate warmup', default=False)
+    parser.add_argument('--nrof_warmup_epochs', type=int,
+        help='Number of warmup epoch', default=0)
     return parser.parse_args(argv)
   
 
