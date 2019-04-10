@@ -127,4 +127,4 @@ total_loss = tf.add_n([triplet_loss] + [domain_adaptation_loss] + regularization
 
 根据实测数据, 每epoch耗时2小时, 即一天可训练12个epoch, 则覆盖1千万人, 大致需要35天. 
 
-以上是单卡的情况. 如果是双机总共8卡，假设可以10倍的加速, 3天即可1千万人消耗. 
+以上是单卡的情况. 如果是双机总共8卡, 假设可以有10倍的加速效果, 3天即可覆盖1千万人. 
