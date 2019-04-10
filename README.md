@@ -9,9 +9,9 @@
 
 * metric. 原作只能简单打印几个性能指标, 如tar, far, roc等. 本项目不仅提供更丰富的指标, 还提供指标图, 而且每个epoch自动保存.
 
-* batch_size. 众所周知，由于显存的限制，batch_size是受限的。本项目提供通过巧妙的方法规避了显存限制，达到了加大batch_size的等效效果。
+* batch_size. 众所周知, 由于显存的限制, batch_size是受限的. 本项目提供通过巧妙的方法规避了显存限制, 达到了加大batch_size的等效效果. 
 
-* Clustering. 本项目利用集成了horovod的多机多卡方案。
+* Clustering. 本项目利用集成了horovod的多机多卡方案. 
 
 训练、验证等各种脚本都在facenet.sh
 
@@ -58,8 +58,8 @@
             --people_per_batch 60 \		        # 顾名思义, 每batch的人数, 必须为3的倍数. 在内存许可的条件下, 尽可能大.
             --images_per_person 10 \		    # 顾名思义, 每次取数据时取的每人的最大照片数.
             --gpu_memory_fraction 1.0 \	        # 显存的占用比, 一般不需要修改.
-            --gpu 0,1,2,3                   # 绑定的GPU序号，如果单卡，则指定1个；如果多卡，则指定用逗号分隔的多个.
-            --cluster True                  # 并行训练，则为True，否则为False.
+            --gpu 0,1,2,3                   # 绑定的GPU序号, 如果单卡, 则指定1个；如果多卡, 则指定用逗号分隔的多个.
+            --cluster True                  # 并行训练, 则为True, 否则为False.
         ;;
 ```
 
@@ -109,13 +109,22 @@ total_loss = tf.add_n([triplet_loss] + [domain_adaptation_loss] + regularization
 当你需要修改数据供给方式时, 修改文件triple.py的函数sample_people
 
 ## 超参间的关系
-经常问到的一个问题是，假设有1千万人的数据，需要多少个epoch才能充分利用这些数据。这是个好问题，涉及各个超参间的关系，而它又与选三元组的算法紧密相关。
-假如超参取以下值，
-people_per_batch = 45
-images_per_person = 10
-batch_size = 90
-epoch_size = 1000
-假设从头开始训练，即没有预训练模型，根据实测数据，开始时45*10=450张照片中，select_triplet能选出1000-2000个合适的三元组。随着训练的进行，符合条件的三元组越来越少。
-假设每次select_triplet平均选出500个三元组，而每个batch用30个三元组，则每次select_triplet能用于17个batch。
-而每个epoch 1000个batch，则每个epoch需要60个select_triplet，即60*45=2700个人。
-假设每次对不同的45人作select_triplet，则覆盖1千万人，大致需要4千个epoch。
+经常问到的一个问题是, 假设有1千万人的数据, 需要多少个epoch才能充分利用这些数据. 这是个好问题, 涉及各个超参间的关系, 而它又与选三元组的算法紧密相关. 
+
+假如超参取以下值:
+* people_per_batch = 45
+* images_per_person = 10
+* batch_size = 90
+* epoch_size = 10000
+
+假设从头开始训练, 即没有预训练模型. 
+
+根据实测数据, 开始时45(people_per_batch)*10(images_per_person)=450张照片中, select_triplet能选出1000-2000个合适的三元组. 随着训练的进行, 符合条件的三元组越来越少. 
+
+假设每次select_triplet平均选出500个三元组, 而每个batch用30个(batch_size/3)三元组, 则每次select_triplet能用于17个batch. 
+
+假设每个epoch 10000个batch(epoch_size), 则每个epoch需要600个select_triplet, 即600*45=27000个人. 则覆盖1千万人, 大致需要400个epoch. 
+
+根据实测数据, 每epoch耗时2小时, 即一天可训练12个epoch, 则覆盖1千万人, 大致需要35天. 
+
+以上是单卡的情况. 如果是双机总共8卡，假设可以10倍的加速, 3天即可1千万人消耗. 
