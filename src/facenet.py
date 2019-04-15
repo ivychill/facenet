@@ -186,37 +186,21 @@ def train(total_loss, global_step, optimizer, learning_rate, moving_average_deca
 
     return train_op
 
-def get_optimizer(optimizer, learning_rate, cluster, nrof_warmup_epochs):
-    if nrof_warmup_epochs > 0:
-        if optimizer == 'SGD':
-            opt = tf.train.GradientDescentOptimizer(learning_rate * hvd.size())
-        elif optimizer == 'ADAGRAD':
-            opt = tf.train.AdagradOptimizer(learning_rate * hvd.size())
-        elif optimizer == 'ADADELTA':
-            opt = tf.train.AdadeltaOptimizer(learning_rate * hvd.size(), rho=0.9, epsilon=1e-6)
-        elif optimizer == 'ADAM':
-            opt = tf.train.AdamOptimizer(learning_rate * hvd.size(), beta1=0.9, beta2=0.999, epsilon=0.1)
-        elif optimizer == 'RMSPROP':
-            opt = tf.train.RMSPropOptimizer(learning_rate * hvd.size(), decay=0.9, momentum=0.9, epsilon=1.0)
-        elif optimizer == 'MOM':
-            opt = tf.train.MomentumOptimizer(learning_rate * hvd.size(), 0.9, use_nesterov=True)
-        else:
-            raise ValueError('Invalid optimization algorithm')
+def get_optimizer(optimizer, learning_rate, cluster):
+    if optimizer == 'SGD':
+        opt = tf.train.GradientDescentOptimizer(learning_rate)
+    elif optimizer == 'ADAGRAD':
+        opt = tf.train.AdagradOptimizer(learning_rate)
+    elif optimizer == 'ADADELTA':
+        opt = tf.train.AdadeltaOptimizer(learning_rate, rho=0.9, epsilon=1e-6)
+    elif optimizer == 'ADAM':
+        opt = tf.train.AdamOptimizer(learning_rate, beta1=0.9, beta2=0.999, epsilon=0.1)
+    elif optimizer == 'RMSPROP':
+        opt = tf.train.RMSPropOptimizer(learning_rate, decay=0.9, momentum=0.9, epsilon=1.0)
+    elif optimizer == 'MOM':
+        opt = tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
     else:
-        if optimizer == 'SGD':
-            opt = tf.train.GradientDescentOptimizer(learning_rate)
-        elif optimizer == 'ADAGRAD':
-            opt = tf.train.AdagradOptimizer(learning_rate)
-        elif optimizer == 'ADADELTA':
-            opt = tf.train.AdadeltaOptimizer(learning_rate, rho=0.9, epsilon=1e-6)
-        elif optimizer == 'ADAM':
-            opt = tf.train.AdamOptimizer(learning_rate, beta1=0.9, beta2=0.999, epsilon=0.1)
-        elif optimizer == 'RMSPROP':
-            opt = tf.train.RMSPropOptimizer(learning_rate, decay=0.9, momentum=0.9, epsilon=1.0)
-        elif optimizer == 'MOM':
-            opt = tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
-        else:
-            raise ValueError('Invalid optimization algorithm')
+        raise ValueError('Invalid optimization algorithm')
 
     if cluster:
         opt = hvd.DistributedOptimizer(opt)

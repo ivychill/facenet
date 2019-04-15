@@ -188,24 +188,14 @@ def main(args):
         regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
         total_loss = tf.add_n([triplet_loss] + [domain_adaptation_loss] + regularization_losses , name='total_loss')
 
+        learning_rate = get_learning_rate(args, learning_rate_placeholder, global_step)
+        tf.summary.scalar('learning_rate', learning_rate)
         # # Build a Graph that trains the model with one batch of examples and updates the model parameters
         # train_op = facenet.train(total_loss, global_step, args.optimizer,
         #     learning_rate, args.moving_average_decay, args.cluster, args.nrof_warmup_epochs)
         # split train into 2 parts: compute gradient and apply gradient
-        # logger.debug('all_variables len: %d' % (len(tf.all_variables())))
-        # logger.debug('global_variables len: %d' % (len(tf.global_variables())))
-        # logger.debug('local_variables len: %d' % (len(tf.local_variables())))
-        # logger.debug('trainable_variables len: %d' % (len(tf.trainable_variables())))
-        # for var in tf.trainable_variables():
-        #     logger.debug(var)
-        if args.nrof_warmup_epochs > 0:
-            learning_rate = get_learning_rate(args, learning_rate_placeholder, global_step)
-        else:
-            learning_rate = tf.train.exponential_decay(learning_rate_placeholder, global_step,
-                args.learning_rate_decay_epochs*args.epoch_size, args.learning_rate_decay_factor, staircase=True)
-        tf.summary.scalar('learning_rate', learning_rate)
         trained_vars = tf.trainable_variables()
-        opt = facenet.get_optimizer(args.optimizer, learning_rate, args.cluster, args.nrof_warmup_epochs)
+        opt = facenet.get_optimizer(args.optimizer, learning_rate, args.cluster)
         grads_and_vars = facenet.compute_gradients(opt, total_loss)
         # grads = facenet.compute_gradients_excluding_vars(total_loss)
         grads, vars = zip(*grads_and_vars)
@@ -259,10 +249,11 @@ def main(args):
                 # epoch = step // args.epoch_size
                 # Train for one epoch
                 triplet.train(args, sess, args.data_source, args.unsupervised, supervised_dataset, unsupervised_dataset, epoch,
-                      image_paths_placeholder, labels_placeholder, source_image_paths_placeholder, target_image_paths_placeholder, labels_batch,
-                      batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, domain_enqueue_op, global_step,
-                      embeddings, total_loss, grads, gradient_placeholder, apply_gradient_op, summary_op, summary_writer, args.learning_rate_schedule_file,
-                      args.embedding_size, triplet_loss, domain_adaptation_loss)
+                    image_paths_placeholder, labels_placeholder, source_image_paths_placeholder, target_image_paths_placeholder, labels_batch,
+                    batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, domain_enqueue_op, global_step,
+                    embeddings, total_loss, opt, grads, gradient_placeholder, apply_gradient_op,
+                    summary_op, summary_writer, args.learning_rate_schedule_file, args.embedding_size,
+                    triplet_loss, domain_adaptation_loss, log_dir)
 
                 if (args.cluster and rank == 0) or not args.cluster:
                     # Save variables and the metagraph if it doesn't exist already
@@ -281,6 +272,29 @@ def main(args):
                 epoch += 1
 
     return model_dir
+
+
+def get_learning_rate(args, learning_rate_placeholder, global_step):
+    if args.nrof_warmup_epochs > 0:
+        # TODO: There may be a bug because global_step is always 0
+        first_decay_steps = args.epoch_size
+        warm_steps = int(args.nrof_warmup_epochs * args.epoch_size)
+        # first_decay_steps += warm_steps
+        learning_rate = tf.train.cosine_decay_restarts(args.learning_rate, global_step - warm_steps,
+                                                       first_decay_steps,
+                                                       t_mul=1.1, m_mul=0.25, alpha=0.0001, name=None)
+        warmup_lr = learning_rate_placeholder * tf.cast(global_step, tf.float32) / tf.cast(warm_steps, tf.float32)
+        learning_rate = tf.cond(global_step < warm_steps,
+                                lambda: warmup_lr, lambda: learning_rate)
+    else:
+        learning_rate = tf.train.exponential_decay(learning_rate_placeholder, global_step,
+                                                   args.learning_rate_decay_epochs * args.epoch_size,
+                                                   args.learning_rate_decay_factor, staircase=True)
+    # # linear scaling
+    # # unnesseary because allreduce perform summing instead of averaging
+    # if args.cluster:
+    #     learning_rate = learning_rate * hvd.size()
+    return learning_rate
 
 
 def evaluate(sess, image_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder,
@@ -349,19 +363,6 @@ def save_variables_and_metagraph(sess, saver, summary_writer, model_dir, model_n
     summary.value.add(tag='time/save_variables', simple_value=save_time_variables)
     summary.value.add(tag='time/save_metagraph', simple_value=save_time_metagraph)
     summary_writer.add_summary(summary, epoch)
-
-
-def get_learning_rate(args, learning_rate_placeholder, global_step):
-    first_decay_steps = args.epoch_size
-    warm_steps = int(args.nrof_warmup_epochs * args.epoch_size)
-    # first_decay_steps += warm_steps
-    learning_rate = tf.train.cosine_decay_restarts(args.learning_rate * hvd.size(), global_step - warm_steps,
-                                                   first_decay_steps,
-                                                   t_mul=1.1, m_mul=0.25, alpha=0.0001, name=None)
-    warmup_lr = learning_rate_placeholder * tf.cast(global_step, tf.float32) / tf.cast(warm_steps, tf.float32)
-    learning_rate = tf.cond(global_step < warm_steps,
-                            lambda: warmup_lr * hvd.size(), lambda: learning_rate)
-    return learning_rate
 
 
 def parse_arguments(argv):

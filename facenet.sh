@@ -96,7 +96,7 @@ case $1 in
             --data_dir ./data \
             --model_def models.inception_resnet_v1 \
             --optimizer ADAM \
-            --learning_rate 0.05 \
+            --learning_rate 0.1 \
             --learning_rate_decay_epochs 10 \
             --learning_rate_decay_factor 0.8 \
             --unsupervised NONE \
@@ -105,6 +105,7 @@ case $1 in
             --val_dir /data/nfs/kc/liukang/face_data/valid_150 \
             --val_pairs /data/nfs/kc/liukang/face_data/valid_150/pairs.txt \
             --max_nrof_epochs 5000  \
+            --epoch_size 10000 \
             --people_per_batch 60 \
             --images_per_person 10 \
             --gpu_memory_fraction 1.0 \

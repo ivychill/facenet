@@ -30,7 +30,7 @@ from __future__ import print_function
 import time
 import tensorflow as tf
 import numpy as np
-
+import os
 import itertools
 import facenet
 from six.moves import xrange
@@ -48,8 +48,9 @@ class Triplet(object):
     def train(self, args, sess, data_source, unsupervised, supervised_dataset, unsupervised_dataset, epoch,
               image_paths_placeholder, labels_placeholder, source_image_paths_placeholder, target_image_paths_placeholder, labels_batch,
               batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, domain_enqueue_op, global_step,
-              embeddings, loss, gradients, gradient_placeholder, apply_gradient_op, summary_op, summary_writer, learning_rate_schedule_file,
-              embedding_size, triplet_loss, domain_adaptation_loss):
+              embeddings, loss, optimizer, gradients, gradient_placeholder, apply_gradient_op,
+              summary_op, summary_writer, learning_rate_schedule_file, embedding_size,
+              triplet_loss, domain_adaptation_loss, log_dir):
         if args.learning_rate > 0.0:
             lr = args.learning_rate
         else:
@@ -115,7 +116,7 @@ class Triplet(object):
                 feed_dict = {batch_size_placeholder: batch_size,
                              learning_rate_placeholder: lr,
                              phase_train_placeholder: True}
-                err, grads, step, emb, lab, triplet_loss_, domain_adaptation_loss_ = sess.run(
+                err, grads, step, emb, lab, triplet_loss_, domain_adaptation_loss_= sess.run(
                     [loss, gradients, global_step, embeddings, labels_batch, triplet_loss, domain_adaptation_loss], feed_dict=feed_dict)
                 # grads, _ = zip(*g_and_v)
                 self.gradient_buffer = [sum(x) for x in zip(self.gradient_buffer, grads)]
@@ -135,13 +136,18 @@ class Triplet(object):
             summary.value.add(tag='time/selection', simple_value=selection_time)
             summary_writer.add_summary(summary, step)
             self._round += 1
-            if self._round % 3 == 0:
+            if self.nrof_gradients > 0 and self._round % 3 == 0:
                 logger.info("apply_gradient...")
                 self.gradient_buffer = map(lambda x: x/self.nrof_gradients, self.gradient_buffer)
                 feed_dict = {learning_rate_placeholder: lr}
                 feed_dict_grad = {grad_placeholder: grad for grad_placeholder, grad in zip(gradient_placeholder, self.gradient_buffer)}
                 feed_dict.update(feed_dict_grad)
-                sess.run(apply_gradient_op, feed_dict=feed_dict)
+                if args.cluster:
+                    _, lr_ = sess.run([apply_gradient_op, optimizer._optimizer._lr], feed_dict=feed_dict)
+                else:
+                    _, lr_ = sess.run([apply_gradient_op, optimizer._lr], feed_dict=feed_dict)
+                with open(os.path.join(log_dir, 'learing_rate.txt'), 'at') as f:
+                    f.write('%d\t%.5f\n' % (epoch, lr_))
                 self.gradient_buffer = [0.0] * self.nrof_trainable_vars
                 self.nrof_gradients = 0
         return step
