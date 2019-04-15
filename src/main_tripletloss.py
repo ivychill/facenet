@@ -290,10 +290,10 @@ def get_learning_rate(args, learning_rate_placeholder, global_step):
         learning_rate = tf.train.exponential_decay(learning_rate_placeholder, global_step,
                                                    args.learning_rate_decay_epochs * args.epoch_size,
                                                    args.learning_rate_decay_factor, staircase=True)
-    # # linear scaling
-    # # unnesseary because allreduce perform summing instead of averaging
-    # if args.cluster:
-    #     learning_rate = learning_rate * hvd.size()
+    # linear scaling
+    # allreduce perform averaging instead of summing
+    if args.cluster:
+        learning_rate = learning_rate * hvd.size()
     return learning_rate
 
 
