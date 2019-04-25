@@ -2,11 +2,11 @@
 import os
 import facenet
 import tensorflow as tf
-# from log_config import logger
+# from log import logger
 
 
 # dataset: [('bob',['bob_01.png',...]),...]
-def get_supervised_dataset_single(path):
+def get_supervised_dataset_single(path, nrof_data_augmentation):
     path_exp = os.path.expanduser(path)
 
     dataset = []
@@ -18,14 +18,14 @@ def get_supervised_dataset_single(path):
     for i in range(nrof_classes):
         class_name = classes[i]
         facedir = os.path.join(path_dir_exp, class_name)
-        image_paths = facenet.get_image_paths(facedir)
+        image_paths = facenet.get_image_paths(facedir, nrof_data_augmentation)
         dataset.append(facenet.ImageClass(class_name, image_paths))
 
     # logger.debug(dataset)
     return dataset
 
 # domain_supervised_dataset: {'id':[('bob',['bob_01.png',...]),...]}
-def get_supervised_dataset_multiple(path):
+def get_supervised_dataset_multiple(path, nrof_data_augmentation):
     domain_supervised_dataset = {}
     path_exp = os.path.expanduser(path)
     domains = [path for path in os.listdir(path_exp) \
@@ -53,12 +53,11 @@ def get_supervised_dataset_multiple(path):
         for i in range(nrof_classes):
             class_name = classes[i]
             facedir = os.path.join(path_dir_exp, class_name)
-            image_paths = facenet.get_image_paths(facedir)
+            image_paths = facenet.get_image_paths(facedir, nrof_data_augmentation)
             # if insert_image_paths(class_name, image_paths) is False:
             dataset.append(facenet.ImageClass(class_name, image_paths))
         if len(dataset)>0:
             domain_supervised_dataset[domain_name] = dataset
-
 
     return domain_supervised_dataset
 
@@ -104,11 +103,11 @@ def get_unsupervised_dataset(path):
 #     return supervised_dataset, unsupervised_datset
 
 
-def get_supervised_dataset(path, data_source):
+def get_supervised_dataset(path, data_source, nrof_data_augmentation):
     if data_source == 'SINGLE':
-        supervised_dataset = get_supervised_dataset_single(path)
+        supervised_dataset = get_supervised_dataset_single(path, nrof_data_augmentation)
     else:
-        supervised_dataset = get_supervised_dataset_multiple(path)
+        supervised_dataset = get_supervised_dataset_multiple(path, nrof_data_augmentation)
     return supervised_dataset
 
 
@@ -117,6 +116,7 @@ def create_input_pipeline(input_queue, args, batch_size_placeholder):
     for _ in range(args.nrof_preprocess_threads):
         filenames, label = input_queue.dequeue()
         images = []
+        save_index = 0
         for filename in tf.unstack(filenames):
             file_contents = tf.read_file(filename)
             image = tf.image.decode_image(file_contents, channels=3)
@@ -126,11 +126,19 @@ def create_input_pipeline(input_queue, args, batch_size_placeholder):
             else:
                 image = tf.image.resize_image_with_crop_or_pad(image, args.image_size, args.image_size)
             if args.random_flip:
+                # logger.debug("random_flip...")
                 image = tf.image.random_flip_left_right(image)
-                image = tf.image.random_brightness(image, max_delta=32. / 255.)
+                image = tf.image.random_brightness(image, max_delta=32./255.)
                 image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
                 image = tf.image.random_hue(image, max_delta=0.2)
                 image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
+                # # TODO: temporary
+                # dir, file = os.path.split(filename)
+                # prefix, suffix = os.path.splitext(file)
+                # save_path = os.path.join("/data/nfs/fengchen/tmp/", str(save_index), prefix + str(save_index) + suffix)
+                # image.save(save_path)
+                # save_index += 0
+                # # TODO: temporary
 
             # pylint: disable=no-member
             image.set_shape((args.image_size, args.image_size, 3))

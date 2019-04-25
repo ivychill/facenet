@@ -92,7 +92,7 @@ def main(args):
 
     logger.info("train_tripletloss......")
     # supervised_dataset, unsupervised_dataset = dataset.get_dataset(args.data_dir, args.data_source)
-    supervised_dataset = dataset.get_supervised_dataset(args.data_dir, args.data_source)
+    supervised_dataset = dataset.get_supervised_dataset(args.data_dir, args.data_source, args.images_per_person)
     unsupervised_dataset = {}
     if args.data_source == 'MULTIPLE' and args.unsupervised != 'NONE':
         unsupervised_dataset = dataset.get_dataset(args.data_dir, args.data_source)
@@ -145,6 +145,14 @@ def main(args):
                                     shared_name=None, name=None)
         enqueue_op = input_queue.enqueue_many([image_paths_placeholder, labels_placeholder])
         image_batch, labels_batch = dataset.create_input_pipeline(input_queue, args, batch_size_placeholder)
+        # # TODO: temporary
+        # save_index=0
+        # for image in image_batch:
+        #     save_path=os.path.join("/data/nfs/fengchen/tmp/", str(save_index), str(save_index) + '.png')
+        #     image.save(save_path)
+        #     save_index += save_index
+        # # TODO: temporary
+
         image_batch = tf.identity(image_batch, 'image_batch')
         image_batch = tf.identity(image_batch, 'input')
         labels_batch = tf.identity(labels_batch, 'label_batch')
@@ -195,6 +203,8 @@ def main(args):
         #     learning_rate, args.moving_average_decay, args.cluster, args.nrof_warmup_epochs)
         # split train into 2 parts: compute gradient and apply gradient
         trained_vars = tf.trainable_variables()
+        # for var in trained_vars:
+        #     logger.debug(var)
         opt = facenet.get_optimizer(args.optimizer, learning_rate, args.cluster)
         grads_and_vars = facenet.compute_gradients(opt, total_loss)
         # grads = facenet.compute_gradients_excluding_vars(total_loss)
@@ -399,28 +409,26 @@ def parse_arguments(argv):
         help='Number of people per batch.', default=30)
     parser.add_argument('--images_per_person', type=int,
         help='Number of images per person.', default=10)
-    parser.add_argument('--people_per_batch_assoc', type=int,
-        help='Number of people per batch.', default=30)
-    parser.add_argument('--images_per_person_assoc', type=int,
-        help='Number of images per person.', default=10)
+    # parser.add_argument('--nrof_data_augmentation', type=int,
+    #     help='Number of minimum images per person. If less, data augumantation will applied to images', default=15)
     parser.add_argument('--epoch_size', type=int,
         help='Number of batches per epoch.', default=10000)
     parser.add_argument('--alpha', type=float,
         help='Positive to negative triplet distance margin.', default=0.2)
     parser.add_argument('--embedding_size', type=int,
         help='Dimensionality of the embedding.', default=128)
-    parser.add_argument('--random_crop', 
+    parser.add_argument('--random_crop',
         help='Performs random cropping of training images. If false, the center image_size pixels from the training images are used. ' +
          'If the size of the images in the data directory is equal to image_size no cropping is performed', action='store_true')
-    parser.add_argument('--random_flip', 
-        help='Performs random horizontal flipping of training images.', action='store_true')
+    parser.add_argument('--random_flip', type=bool,
+        help='Performs random horizontal flipping of training images.', default=True)
     parser.add_argument('--keep_probability', type=float,
         help='Keep probability of dropout for the fully connected layer(s).', default=1.0)
     parser.add_argument('--unsupervised', type=str, choices=['NONE', 'MMD', 'DANN'],
         help='whether of not unsupervised loss is added', default='WITHOUT')
     parser.add_argument('--weight_decay', type=float,
         help='L2 weight regularization.', default=0.0)
-    parser.add_argument('--optimizer', type=str, choices=['ADAGRAD', 'ADADELTA', 'ADAM', 'RMSPROP', 'MOM'],
+    parser.add_argument('--optimizer', type=str, choices=['SGD', 'ADAGRAD', 'ADADELTA', 'ADAM', 'RMSPROP', 'MOM'],
         help='The optimization algorithm to use', default='ADAGRAD')
     parser.add_argument('--learning_rate', type=float,
         help='Initial learning rate. If set to a negative value a learning rate ' +

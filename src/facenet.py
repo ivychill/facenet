@@ -41,6 +41,8 @@ import re
 from tensorflow.python.platform import gfile
 from six import iteritems
 import horovod.tensorflow as hvd
+from log import logger
+
 
 def triplet_loss(anchor, positive, negative, alpha):
     """Calculate the triplet loss according to the FaceNet paper
@@ -360,11 +362,20 @@ def get_dataset(path, has_class_directories=True):
   
     return dataset
 
-def get_image_paths(facedir):
+def get_image_paths(facedir, nrof_data_augmentation):
     image_paths = []
     if os.path.isdir(facedir):
         images = os.listdir(facedir)
-        image_paths = [os.path.join(facedir,img) for img in images]
+        for img in images:
+            image_path = os.path.join(facedir, img)
+            if os.path.isdir(image_path) == False:
+                image_paths.append(image_path)
+        if nrof_data_augmentation > len(images):
+            for i in range(nrof_data_augmentation - len(images)):
+                index = np.random.randint(0, len(images))
+                image_paths.append(image_paths[index])
+
+    # logger.debug("image_paths: %s" % (image_paths))
     return image_paths
   
 def split_dataset(dataset, split_ratio, mode):
