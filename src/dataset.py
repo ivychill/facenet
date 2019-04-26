@@ -2,6 +2,7 @@
 import os
 import facenet
 import tensorflow as tf
+import data_aug
 # from log import logger
 
 
@@ -110,13 +111,12 @@ def get_supervised_dataset(path, data_source, nrof_data_augmentation):
         supervised_dataset = get_supervised_dataset_multiple(path, nrof_data_augmentation)
     return supervised_dataset
 
-
+# data_augmentation is bitwise
 def create_input_pipeline(input_queue, args, batch_size_placeholder):
     images_and_labels = []
     for _ in range(args.nrof_preprocess_threads):
-        filenames, label = input_queue.dequeue()
+        filenames, label, data_augmentation = input_queue.dequeue()
         images = []
-        save_index = 0
         for filename in tf.unstack(filenames):
             file_contents = tf.read_file(filename)
             image = tf.image.decode_image(file_contents, channels=3)
@@ -126,19 +126,7 @@ def create_input_pipeline(input_queue, args, batch_size_placeholder):
             else:
                 image = tf.image.resize_image_with_crop_or_pad(image, args.image_size, args.image_size)
             if args.random_flip:
-                # logger.debug("random_flip...")
-                image = tf.image.random_flip_left_right(image)
-                image = tf.image.random_brightness(image, max_delta=32./255.)
-                image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
-                image = tf.image.random_hue(image, max_delta=0.2)
-                image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
-                # # TODO: temporary
-                # dir, file = os.path.split(filename)
-                # prefix, suffix = os.path.splitext(file)
-                # save_path = os.path.join("/data/nfs/fengchen/tmp/", str(save_index), prefix + str(save_index) + suffix)
-                # image.save(save_path)
-                # save_index += 0
-                # # TODO: temporary
+                image = data_aug.augment_data(image, args, data_augmentation)
 
             # pylint: disable=no-member
             image.set_shape((args.image_size, args.image_size, 3))
@@ -152,7 +140,6 @@ def create_input_pipeline(input_queue, args, batch_size_placeholder):
         capacity=4 * args.nrof_preprocess_threads * args.batch_size,
         allow_smaller_final_batch=True)
     return image_batch, labels_batch
-
 
 def create_domain_input_pipeline(input_queue, args, batch_size_placeholder):
     images_list = []

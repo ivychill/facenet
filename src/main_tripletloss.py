@@ -136,23 +136,16 @@ def main(args):
         phase_train_placeholder = tf.placeholder(tf.bool, name='phase_train')
         image_paths_placeholder = tf.placeholder(tf.string, shape=(None,3), name='image_paths')
         labels_placeholder = tf.placeholder(tf.int64, shape=(None,3), name='labels')
+        data_augmentations_placeholder = tf.placeholder(tf.int64, shape=(None, 3), name='data_augmentations')
         source_image_paths_placeholder = tf.placeholder(tf.string, shape=(None, 1), name='source_image_paths')
         target_image_paths_placeholder = tf.placeholder(tf.string, shape=(None, 1), name='target_image_paths')
 
         input_queue = data_flow_ops.FIFOQueue(capacity=100000,
-                                    dtypes=[tf.string, tf.int64],
-                                    shapes=[(3,), (3,)],
+                                    dtypes=[tf.string, tf.int64, tf.int64],
+                                    shapes=[(3,), (3,), (3,)],
                                     shared_name=None, name=None)
-        enqueue_op = input_queue.enqueue_many([image_paths_placeholder, labels_placeholder])
+        enqueue_op = input_queue.enqueue_many([image_paths_placeholder, labels_placeholder, data_augmentations_placeholder])
         image_batch, labels_batch = dataset.create_input_pipeline(input_queue, args, batch_size_placeholder)
-        # # TODO: temporary
-        # save_index=0
-        # for image in image_batch:
-        #     save_path=os.path.join("/data/nfs/fengchen/tmp/", str(save_index), str(save_index) + '.png')
-        #     image.save(save_path)
-        #     save_index += save_index
-        # # TODO: temporary
-
         image_batch = tf.identity(image_batch, 'image_batch')
         image_batch = tf.identity(image_batch, 'input')
         labels_batch = tf.identity(labels_batch, 'label_batch')
@@ -245,11 +238,11 @@ def main(args):
                 logger.info('Restoring pretrained model: %s' % args.pretrained_model)
                 saver.restore(sess, os.path.expanduser(args.pretrained_model))
                 if args.lfw_dir:
-                    evaluate(sess, lfw_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder,
+                    evaluate(sess, lfw_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder, data_augmentations_placeholder,
                              batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, lfw_actual_issame,
                              args.batch_size, args.lfw_nrof_folds, log_dir, 'lfw_raw',epoch, summary_writer, args.embedding_size)
                 if args.val_dir:
-                    evaluate(sess, val_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder,
+                    evaluate(sess, val_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder, data_augmentations_placeholder,
                              batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, val_actual_issame,
                              args.batch_size, args.lfw_nrof_folds, log_dir, 'val_raw',epoch, summary_writer, args.embedding_size)
 
@@ -258,10 +251,11 @@ def main(args):
                 step = sess.run(global_step, feed_dict=None)
                 # epoch = step // args.epoch_size
                 # Train for one epoch
-                triplet.train(args, sess, args.data_source, args.unsupervised, supervised_dataset, unsupervised_dataset, epoch,
-                    image_paths_placeholder, labels_placeholder, source_image_paths_placeholder, target_image_paths_placeholder, labels_batch,
-                    batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, domain_enqueue_op, global_step,
-                    embeddings, total_loss, opt, grads, gradient_placeholder, apply_gradient_op,
+                triplet.train(image_batch, args, sess, args.data_source, args.unsupervised, supervised_dataset, unsupervised_dataset, epoch,
+                    image_paths_placeholder, labels_placeholder, data_augmentations_placeholder,
+                    source_image_paths_placeholder, target_image_paths_placeholder, labels_batch,
+                    batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, domain_enqueue_op,
+                    global_step, embeddings, total_loss, opt, grads, gradient_placeholder, apply_gradient_op,
                     summary_op, summary_writer, args.learning_rate_schedule_file, args.embedding_size,
                     triplet_loss, domain_adaptation_loss, log_dir)
 
@@ -271,12 +265,12 @@ def main(args):
                     save_variables_and_metagraph(sess, saver, summary_writer, model_dir, subdir, epoch)
 
                 if args.lfw_dir:
-                    evaluate(sess, lfw_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder,
+                    evaluate(sess, lfw_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder, data_augmentations_placeholder,
                              batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, lfw_actual_issame,
                              args.batch_size, args.lfw_nrof_folds, log_dir, 'lfw', epoch, summary_writer, args.embedding_size)
 
                 if args.val_dir:
-                    evaluate(sess, val_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder,
+                    evaluate(sess, val_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder, data_augmentations_placeholder,
                              batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, val_actual_issame,
                              args.batch_size, args.lfw_nrof_folds, log_dir, 'val', epoch, summary_writer, args.embedding_size)
                 epoch += 1
@@ -307,18 +301,21 @@ def get_learning_rate(args, learning_rate_placeholder, global_step):
     return learning_rate
 
 
-def evaluate(sess, image_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder,
+def evaluate(sess, image_paths, embeddings, labels_batch, image_paths_placeholder, labels_placeholder, data_augmentations_placeholder,
              batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, actual_issame,
              batch_size, nrof_folds, log_dir, prefix, epoch, summary_writer, embedding_size):
     start_time = time.time()
     # Run forward pass to calculate embeddings
-    print('Running forward pass on LFW images: ', end='')
+    logger.info('Running forward pass on LFW images: ', end='')
 
     nrof_images = len(actual_issame) * 2
     assert (len(image_paths) == nrof_images)
     labels_array = np.reshape(np.arange(nrof_images), (-1, 3))
     image_paths_array = np.reshape(np.expand_dims(np.array(image_paths), 1), (-1, 3))
-    sess.run(enqueue_op, {image_paths_placeholder: image_paths_array, labels_placeholder: labels_array})
+    data_augmentations_array = np.zeros_like(labels_array)
+    sess.run(enqueue_op, feed_dict={image_paths_placeholder: image_paths_array,
+                                    labels_placeholder: labels_array,
+                                    data_augmentations_placeholder: data_augmentations_array})
     emb_array = np.zeros((nrof_images, embedding_size))
     nrof_batches = int(np.ceil(nrof_images / batch_size))
     label_check_array = np.zeros((nrof_images,))
@@ -421,7 +418,7 @@ def parse_arguments(argv):
         help='Performs random cropping of training images. If false, the center image_size pixels from the training images are used. ' +
          'If the size of the images in the data directory is equal to image_size no cropping is performed', action='store_true')
     parser.add_argument('--random_flip', type=bool,
-        help='Performs random horizontal flipping of training images.', default=True)
+        help='Performs random horizontal flipping of training images.', default=False)
     parser.add_argument('--keep_probability', type=float,
         help='Keep probability of dropout for the fully connected layer(s).', default=1.0)
     parser.add_argument('--unsupervised', type=str, choices=['NONE', 'MMD', 'DANN'],

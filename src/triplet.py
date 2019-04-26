@@ -36,6 +36,7 @@ import facenet
 from six.moves import xrange
 import random
 from log import logger
+import scipy.misc
 
 
 class Triplet(object):
@@ -45,10 +46,11 @@ class Triplet(object):
         self.gradient_buffer = [0.0] * self.nrof_trainable_vars
         self.nrof_gradients = 0
 
-    def train(self, args, sess, data_source, unsupervised, supervised_dataset, unsupervised_dataset, epoch,
-              image_paths_placeholder, labels_placeholder, source_image_paths_placeholder, target_image_paths_placeholder, labels_batch,
-              batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, domain_enqueue_op, global_step,
-              embeddings, loss, optimizer, gradients, gradient_placeholder, apply_gradient_op,
+    def train(self, image_batch, args, sess, data_source, unsupervised, supervised_dataset, unsupervised_dataset, epoch,
+              image_paths_placeholder, labels_placeholder, data_augmentations_placeholder,
+              source_image_paths_placeholder, target_image_paths_placeholder, labels_batch,
+              batch_size_placeholder, learning_rate_placeholder, phase_train_placeholder, enqueue_op, domain_enqueue_op,
+              global_step, embeddings, loss, optimizer, gradients, gradient_placeholder, apply_gradient_op,
               summary_op, summary_writer, learning_rate_schedule_file, embedding_size,
               triplet_loss, domain_adaptation_loss, log_dir):
         if args.learning_rate > 0.0:
@@ -66,9 +68,10 @@ class Triplet(object):
             nrof_examples = args.people_per_batch * args.images_per_person
             labels_array = np.reshape(np.arange(nrof_examples), (-1, 3))
             image_paths_array = np.reshape(np.expand_dims(np.array(image_paths), 1), (-1, 3))
-
-            sess.run(enqueue_op, {image_paths_placeholder: image_paths_array, labels_placeholder: labels_array})
-
+            data_augmentations_array = self.get_data_augmentations_array(labels_array)
+            sess.run(enqueue_op, feed_dict={image_paths_placeholder: image_paths_array,
+                                            labels_placeholder: labels_array,
+                                            data_augmentations_placeholder: data_augmentations_array})
             emb_array = np.zeros((nrof_examples, embedding_size))
             nrof_batches = int(np.ceil(nrof_examples / args.batch_size))
             for i in range(nrof_batches):
@@ -93,7 +96,10 @@ class Triplet(object):
             triplet_paths = list(itertools.chain(*triplets))
             labels_array = np.reshape(np.arange(len(triplet_paths)), (-1, 3))
             triplet_paths_array = np.reshape(np.expand_dims(np.array(triplet_paths), 1), (-1, 3))
-            sess.run(enqueue_op, {image_paths_placeholder: triplet_paths_array, labels_placeholder: labels_array})
+            data_augmentations_array = self.get_data_augmentations_array(labels_array)
+            sess.run(enqueue_op, feed_dict={image_paths_placeholder: triplet_paths_array,
+                                            labels_placeholder: labels_array,
+                                            data_augmentations_placeholder: data_augmentations_array})
             if args.data_source == 'MULTIPLE' and args.unsupervised != 'NONE':
                 source_image_paths, target_image_paths = self.sample_unsupervised_dataset(unsupervised_dataset,
                                                                                   nrof_batches * args.batch_size//2)
@@ -114,16 +120,19 @@ class Triplet(object):
                 start_time = time.time()
                 batch_size = min(nrof_examples - i * args.batch_size, args.batch_size)
                 feed_dict = {batch_size_placeholder: batch_size,
+                             # round_placeholder: self._round,
                              learning_rate_placeholder: lr,
                              phase_train_placeholder: True}
-                err, grads, step, emb, lab, triplet_loss_, domain_adaptation_loss_= sess.run(
-                    [loss, gradients, global_step, embeddings, labels_batch, triplet_loss, domain_adaptation_loss], feed_dict=feed_dict)
+                images, err, grads, step, emb, lab, triplet_loss_, domain_adaptation_loss_= sess.run(
+                    [image_batch, loss, gradients, global_step, embeddings, labels_batch, triplet_loss, domain_adaptation_loss], feed_dict=feed_dict)
                 # grads, _ = zip(*g_and_v)
                 self.gradient_buffer = [sum(x) for x in zip(self.gradient_buffer, grads)]
                 self.nrof_gradients += 1
                 emb_array[lab, :] = emb
                 loss_array[i] = err
                 duration = time.time() - start_time
+                # if args.random_flip:
+                #     self.save_images(images, batch_number)
                 logger.debug('Epoch [%d][%d/%d]\tRound [%d]\tgrad: [%d]\tTime %.3f\tLoss %f\ttriplet_Loss %f\tdomain_adaptation_loss %f' %
                       (epoch, batch_number + 1, args.epoch_size, self._round, self.nrof_gradients, duration, err, triplet_loss_, domain_adaptation_loss_))
                 batch_number += 1
@@ -152,6 +161,23 @@ class Triplet(object):
                 self.nrof_gradients = 0
         return step
 
+    def get_data_augmentations_array(self, labels_array):
+        array_shape = labels_array.shape
+        if self._round % 3 == 0:
+            data_augmentations_array = np.random.randint(256, size=array_shape)
+        else:
+            data_augmentations_array = np.zeros_like(labels_array)
+        return data_augmentations_array
+
+    def save_images(self, images, batch_number):
+        save_index = 0
+        save_dir = os.path.join("/data/nfs/fengchen/tmp/aug", str(batch_number))
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        for image in images:
+            save_path = os.path.join(save_dir, str(save_index) + '.png')
+            scipy.misc.imsave(save_path, image)
+            save_index += 1
 
     def select_triplets(self, embeddings, nrof_images_per_class, image_paths, people_per_batch, alpha):
         """ Select the triplets for training

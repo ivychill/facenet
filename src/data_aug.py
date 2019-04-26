@@ -35,20 +35,20 @@ def distort_color(image, color_ordering=0, fast_mode=False, scope=None):
       if color_ordering == 0:
         image = tf.image.random_brightness(image, max_delta=32. / 255.)
         image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
-        image = tf.image.random_hue(image, max_delta=0.2)
+        # image = tf.image.random_hue(image, max_delta=0.2)
         image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
       elif color_ordering == 1:
         image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
         image = tf.image.random_brightness(image, max_delta=32. / 255.)
         image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
-        image = tf.image.random_hue(image, max_delta=0.2)
+        # image = tf.image.random_hue(image, max_delta=0.2)
       elif color_ordering == 2:
         image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
-        image = tf.image.random_hue(image, max_delta=0.2)
+        # image = tf.image.random_hue(image, max_delta=0.2)
         image = tf.image.random_brightness(image, max_delta=32. / 255.)
         image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
       elif color_ordering == 3:
-        image = tf.image.random_hue(image, max_delta=0.2)
+        # image = tf.image.random_hue(image, max_delta=0.2)
         image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
         image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
         image = tf.image.random_brightness(image, max_delta=32. / 255.)
@@ -91,3 +91,40 @@ def random_blur_image(image):
     img = img.filter(ImageFilter.BLUR)
     return np.array(img)
     return misc.imfilter(image,'blur')
+
+
+def get_augmentation_flag(control, field):
+    return tf.equal(tf.mod(tf.floor_div(control, field), 2), 1)
+
+
+def augment_data(image, args, data_augmentation):
+    # image = tf.image.random_flip_left_right(image)
+    # image = tf.image.random_brightness(image, max_delta=32. / 255.)
+    # image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
+    # # image = tf.image.random_hue(image, max_delta=0.2)
+    # image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
+    # image = tf.py_func(random_noise_image, [image], tf.uint8)
+    # image = tf.py_func(random_blur_image, [image], tf.uint8)
+    RANDOM_NOISE = 1 << 0
+    RANDOM_BLUR = 1 << 1
+    RANDOM_CROP = 1 << 2
+    RANDOM_FLIP = 1 << 3
+    RANDOM_COLOR = 1 << 4
+
+    # image = tf.cond(get_augmentation_flag(data_augmentation[0], RANDOM_CROP),
+    #                 lambda: tf.random_crop(image, [args.image_size, args.image_size, 3]),
+    #                 lambda: tf.image.resize_image_with_crop_or_pad(image, args.image_size, args.image_size))
+    image = tf.cond(get_augmentation_flag(data_augmentation[0], RANDOM_FLIP),
+                    lambda: tf.image.random_flip_left_right(image),
+                    lambda: tf.identity(image))
+    image = tf.cond(get_augmentation_flag(data_augmentation[0], RANDOM_NOISE),
+                    lambda: tf.py_func(random_noise_image, [image], tf.uint8),
+                    lambda: tf.identity(image))
+    image = tf.cond(get_augmentation_flag(data_augmentation[0], RANDOM_BLUR),
+                    lambda: tf.py_func(random_blur_image, [image], tf.uint8),
+                    lambda: tf.identity(image))
+    image = tf.cond(get_augmentation_flag(data_augmentation[0], RANDOM_COLOR),
+                    lambda: apply_with_random_selector(image, lambda x, ordering: distort_color(x, ordering),
+                                                       num_cases=4),
+                    lambda: tf.identity(image))
+    return image
