@@ -227,8 +227,8 @@ class Triplet(object):
         if data_source == 'SINGLE':
             dataset = supervised_dataset
         else:
-            # dataset = list_people_compound(supervised_dataset)
-            dataset = self.list_people_round_robin(supervised_dataset)
+            dataset = self.list_people_compound(supervised_dataset)
+            # dataset = self.list_people_round_robin(supervised_dataset)
         nrof_classes = len(dataset)
         class_indices = np.arange(nrof_classes)
         np.random.shuffle(class_indices)
