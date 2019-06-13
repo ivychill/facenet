@@ -306,7 +306,7 @@ def evaluate(sess, image_paths, embeddings, labels_batch, image_paths_placeholde
              batch_size, nrof_folds, log_dir, prefix, epoch, summary_writer, embedding_size):
     start_time = time.time()
     # Run forward pass to calculate embeddings
-    logger.info('Running forward pass on LFW images: ', end='')
+    logger.info('Running forward pass on LFW images: ')
 
     nrof_images = len(actual_issame) * 2
     assert (len(image_paths) == nrof_images)
@@ -406,8 +406,8 @@ def parse_arguments(argv):
         help='Number of people per batch.', default=30)
     parser.add_argument('--images_per_person', type=int,
         help='Number of images per person.', default=10)
-    # parser.add_argument('--nrof_data_augmentation', type=int,
-    #     help='Number of minimum images per person. If less, data augumantation will applied to images', default=15)
+    parser.add_argument('--max_triplet_per_select', type=int,
+        help='Number of maximum triplets per select_triplet.', default=600)
     parser.add_argument('--epoch_size', type=int,
         help='Number of batches per epoch.', default=10000)
     parser.add_argument('--alpha', type=float,

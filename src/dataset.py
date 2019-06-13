@@ -2,7 +2,7 @@
 import os
 import facenet
 import tensorflow as tf
-import data_aug
+# import data_aug
 # from log import logger
 
 
@@ -126,7 +126,8 @@ def create_input_pipeline(input_queue, args, batch_size_placeholder):
             else:
                 image = tf.image.resize_image_with_crop_or_pad(image, args.image_size, args.image_size)
             if args.random_flip:
-                image = data_aug.augment_data(image, args, data_augmentation)
+                # image = data_aug.augment_data(image, args, data_augmentation)
+                pass
 
             # pylint: disable=no-member
             image.set_shape((args.image_size, args.image_size, 3))

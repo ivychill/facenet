@@ -85,8 +85,10 @@ class Triplet(object):
 
             # Select triplets based on the embeddings
             logger.debug('Selecting suitable triplets for training')
-            triplets, nrof_random_negs, nrof_triplets = self.select_triplets(emb_array, num_per_class,
-                                                                        image_paths, args.people_per_batch, args.alpha)
+            # triplets, nrof_random_negs, nrof_triplets = self.select_triplets(emb_array, num_per_class,
+            #                                                             image_paths, args.people_per_batch, args.alpha)
+            triplets, nrof_random_negs, nrof_triplets = self.select_triplets_ceiling(emb_array, num_per_class,
+                                                                        image_paths, args.people_per_batch, args.alpha, args.max_triplet_per_select)
             selection_time = time.time() - start_time
             logger.debug('(nrof_random_negs, nrof_triplets) = (%d, %d): time=%.3f seconds' %
                   (nrof_random_negs, nrof_triplets, selection_time))
@@ -145,7 +147,8 @@ class Triplet(object):
             summary.value.add(tag='time/selection', simple_value=selection_time)
             summary_writer.add_summary(summary, step)
             self._round += 1
-            if self.nrof_gradients > 0 and self._round % 3 == 0:
+            if self.nrof_gradients > 0:
+            # if self.nrof_gradients > 0 and self._round % 3 == 0:
                 logger.info("apply_gradient...")
                 self.gradient_buffer = map(lambda x: x/self.nrof_gradients, self.gradient_buffer)
                 feed_dict = {learning_rate_placeholder: lr}
@@ -221,6 +224,54 @@ class Triplet(object):
         np.random.shuffle(triplets)
         return triplets, num_trips, len(triplets)
 
+    def select_triplets_ceiling(self, embeddings, nrof_images_per_class, image_paths, people_per_batch, alpha, max_triplet_per_select):
+        """ Select the triplets for training
+        """
+        trip_idx = 0
+        emb_start_idx = 0
+        num_trips = 0
+        triplets = []
+        nrof_triplets = 0
+        early_break = False
+
+        for i in xrange(people_per_batch):
+            if early_break:
+                break
+            nrof_images = int(nrof_images_per_class[i])
+            for j in xrange(1,nrof_images):
+                if early_break:
+                    break
+                a_idx = emb_start_idx + j - 1
+                neg_dists_sqr = np.sum(np.square(embeddings[a_idx] - embeddings), 1)
+                for pair in xrange(j, nrof_images): # For every possible positive pair.
+                    p_idx = emb_start_idx + pair
+                    pos_dist_sqr = np.sum(np.square(embeddings[a_idx]-embeddings[p_idx]))
+                    neg_dists_sqr[emb_start_idx:emb_start_idx+nrof_images] = np.NaN
+                    #all_neg = np.where(np.logical_and(neg_dists_sqr-pos_dist_sqr<alpha, pos_dist_sqr<neg_dists_sqr))[0]  # FaceNet selection
+                    all_neg = np.where(neg_dists_sqr-pos_dist_sqr<alpha)[0] # VGG Face selecction
+                    nrof_random_negs = all_neg.shape[0]
+                    if nrof_random_negs>0:
+                        rnd_idx = np.random.randint(nrof_random_negs)
+                        n_idx = all_neg[rnd_idx]
+                        triplets.append((image_paths[a_idx], image_paths[p_idx], image_paths[n_idx]))
+                        nrof_triplets += 1
+                        trip_idx += 1
+
+                    num_trips += 1
+                    if nrof_triplets >= max_triplet_per_select:
+                        logger.debug("reach max_triplet_per_select, break!")
+                        early_break = True
+                        break
+
+            emb_start_idx += nrof_images
+
+        if early_break:
+            logger.debug("select_triplet break early")
+        else:
+            logger.debug("select_triplet stop normally")
+
+        np.random.shuffle(triplets)
+        return triplets, num_trips, len(triplets)
 
     def sample_people(self, data_source,  supervised_dataset, people_per_batch, images_per_person):
         nrof_images = people_per_batch * images_per_person
