@@ -40,11 +40,14 @@ import scipy.misc
 
 
 class Triplet(object):
-    def __init__(self, ):
+    def __init__(self, max_triplet_per_select):
         self._round = 0       # get from different data source round-robin
         self.nrof_trainable_vars = len(tf.trainable_variables())
         self.gradient_buffer = [0.0] * self.nrof_trainable_vars
         self.nrof_gradients = 0
+        self.triplets = []
+        self.max_triplet_per_select = max_triplet_per_select
+        self.nrof_triplets_gap = max_triplet_per_select
 
     def train(self, image_batch, args, sess, data_source, unsupervised, supervised_dataset, unsupervised_dataset, epoch,
               image_paths_placeholder, labels_placeholder, data_augmentations_placeholder,
@@ -79,6 +82,7 @@ class Triplet(object):
                 emb, lab = sess.run([embeddings, labels_batch], feed_dict={batch_size_placeholder: batch_size,
                                                                            learning_rate_placeholder: lr,
                                                                            phase_train_placeholder: True})
+                logger.debug('labels_batch: %s' % (lab))
                 emb_array[lab, :] = emb
 
             logger.debug('train time: %.3f' % (time.time()-start_time))
@@ -88,14 +92,22 @@ class Triplet(object):
             # triplets, nrof_random_negs, nrof_triplets = self.select_triplets(emb_array, num_per_class,
             #                                                             image_paths, args.people_per_batch, args.alpha)
             triplets, nrof_random_negs, nrof_triplets = self.select_triplets_ceiling(emb_array, num_per_class,
-                                                                        image_paths, args.people_per_batch, args.alpha, args.max_triplet_per_select)
+                                                                        image_paths, args.people_per_batch, args.alpha, self.nrof_triplets_gap)
             selection_time = time.time() - start_time
             logger.debug('(nrof_random_negs, nrof_triplets) = (%d, %d): time=%.3f seconds' %
                   (nrof_random_negs, nrof_triplets, selection_time))
+            self.triplets = self.triplets + triplets
+            self.nrof_triplets_gap = self.nrof_triplets_gap - nrof_triplets
+            # logger.debug('triplets: %s' % (self.triplets))
+            logger.debug('nrof_triplets_gap: %s' % (self.nrof_triplets_gap))
+            if self.nrof_triplets_gap > 0:
+                logger.debug('not enough triplets...')
+                continue
 
             # Perform training on the selected triplets
-            nrof_batches = int(np.ceil(nrof_triplets * 3 / args.batch_size))
-            triplet_paths = list(itertools.chain(*triplets))
+            # nrof_batches = int(np.ceil(nrof_triplets * 3 / args.batch_size))
+            nrof_batches = int(np.ceil(self.max_triplet_per_select * 3 / args.batch_size))
+            triplet_paths = list(itertools.chain(*self.triplets))
             labels_array = np.reshape(np.arange(len(triplet_paths)), (-1, 3))
             triplet_paths_array = np.reshape(np.expand_dims(np.array(triplet_paths), 1), (-1, 3))
             data_augmentations_array = self.get_data_augmentations_array(labels_array)
@@ -114,8 +126,8 @@ class Triplet(object):
             nrof_examples = len(triplet_paths)
             train_time = 0
             i = 0
-            emb_array = np.zeros((nrof_examples, embedding_size))
-            loss_array = np.zeros((nrof_triplets,))
+            # emb_array = np.zeros((nrof_examples, embedding_size))
+            # loss_array = np.zeros((nrof_triplets,))
             summary = tf.Summary()
             step = 0
             while i < nrof_batches:
@@ -130,8 +142,8 @@ class Triplet(object):
                 # grads, _ = zip(*g_and_v)
                 self.gradient_buffer = [sum(x) for x in zip(self.gradient_buffer, grads)]
                 self.nrof_gradients += 1
-                emb_array[lab, :] = emb
-                loss_array[i] = err
+                # emb_array[lab, :] = emb
+                # loss_array[i] = err
                 duration = time.time() - start_time
                 # if args.random_flip:
                 #     self.save_images(images, batch_number)
@@ -162,6 +174,10 @@ class Triplet(object):
                     f.write('%d\t%.5f\n' % (epoch, lr_))
                 self.gradient_buffer = [0.0] * self.nrof_trainable_vars
                 self.nrof_gradients = 0
+
+            self.nrof_triplets_gap = self.max_triplet_per_select
+            self.triplets = []
+
         return step
 
     def get_data_augmentations_array(self, labels_array):
@@ -278,8 +294,8 @@ class Triplet(object):
         if data_source == 'SINGLE':
             dataset = supervised_dataset
         else:
-            dataset = self.list_people_compound(supervised_dataset)
-            # dataset = self.list_people_round_robin(supervised_dataset)
+            # dataset = self.list_people_compound(supervised_dataset)
+            dataset = self.list_people_round_robin(supervised_dataset)
         nrof_classes = len(dataset)
         class_indices = np.arange(nrof_classes)
         np.random.shuffle(class_indices)

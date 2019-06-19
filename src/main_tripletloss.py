@@ -47,7 +47,7 @@ import lfw
 from triplet import Triplet
 # import tsne_viz
 import dataset
-import horovod.tensorflow as hvd
+# import horovod.tensorflow as hvd
 
 def main(args):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
@@ -154,7 +154,7 @@ def main(args):
             phase_train=phase_train_placeholder, bottleneck_layer_size=args.embedding_size,
             weight_decay=args.weight_decay)
         embeddings = tf.nn.l2_normalize(prelogits, 1, 1e-10, name='embeddings')
-        triplet = Triplet()
+        triplet = Triplet(args.max_triplet_per_select)
         triplet_loss = triplet.triplet_loss(embeddings, args.embedding_size, args.alpha)
         domain_adaptation_loss = tf.constant(0.0)
         domain_enqueue_op = None
@@ -208,7 +208,7 @@ def main(args):
         apply_gradient_op = facenet.apply_gradients(opt, zip(gradient_placeholder, trained_vars), global_step, args.moving_average_decay)
 
         # Create a saver
-        saver = tf.train.Saver(tf.trainable_variables(), max_to_keep=10)
+        saver = tf.train.Saver(tf.trainable_variables(), max_to_keep=100)
         # Build the summary operation based on the TF collection of Summaries.
         summary_op = tf.summary.merge_all()
 

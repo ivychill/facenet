@@ -40,7 +40,7 @@ import random
 import re
 from tensorflow.python.platform import gfile
 from six import iteritems
-import horovod.tensorflow as hvd
+# import horovod.tensorflow as hvd
 from log import logger
 
 

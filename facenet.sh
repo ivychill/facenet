@@ -63,25 +63,25 @@ case $1 in
             --logs_base_dir ./logs \
             --models_base_dir ./models/ \
             --data_source SINGLE \
-            --data_dir /data/nfs/kc/liukang/face_data/80w_camera/80w_split_70_10/70w_all \
+            --data_dir /data/liukang/face_data/80w_camera/80w_split_70_10/70w_all \
             --model_def models.inception_resnet_v1 \
             --optimizer ADAM \
             --learning_rate 0.1 \
             --learning_rate_decay_epochs 10 \
             --learning_rate_decay_factor 0.8 \
             --unsupervised NONE \
-            --lfw_dir /data/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_35 \
-            --lfw_pairs /data/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_35/pairs.txt \
-            --val_dir /data/nfs/kc/liukang/face_data/valid_150 \
-            --val_pairs /data/nfs/kc/liukang/face_data/valid_150/pairs.txt \
+            --lfw_dir /data/nfs/asus/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_35 \
+            --lfw_pairs /data/nfs/asus/yanhong.jia/datasets/face_recognition/datasets_for_train/valid_35/pairs.txt \
+            --val_dir /data/liukang/face_data/valid_150 \
+            --val_pairs /data/liukang/face_data/valid_150/pairs.txt \
             --max_nrof_epochs 5000  \
             --epoch_size 1000 \
-            --people_per_batch 600 \
+            --people_per_batch 60 \
             --images_per_person 10 \
-            --max_triplet_per_select 600 \
+            --max_triplet_per_select 1500 \
             --random_flip False \
             --gpu_memory_fraction 1.0 \
-            --gpu 2
+            --gpu 0
         ;;
 
     train_shallow)
@@ -103,12 +103,12 @@ case $1 in
             --val_pairs /data/nfs/kc/liukang/face_data/valid_150/pairs.txt \
             --max_nrof_epochs 5000  \
             --epoch_size 1000 \
-            --people_per_batch 12000 \
+            --people_per_batch 1800 \
             --images_per_person 2 \
-            --max_triplet_per_select 600 \
+            --max_triplet_per_select 1500 \
             --random_flip False \
             --gpu_memory_fraction 1.0 \
-            --gpu 2
+            --gpu 1
         ;;
 
     train_hvd)
@@ -126,7 +126,7 @@ case $1 in
             --data_dir /data/datasets/face_camera_80w/80w_split_70_10/70w_all \
             --model_def models.inception_resnet_v1 \
             --optimizer ADAM \
-            --learning_rate 0.1 \
+            --learning_rate 0.4 \
             --learning_rate_decay_epochs 10 \
             --learning_rate_decay_factor 0.8 \
             --unsupervised NONE \
@@ -136,9 +136,9 @@ case $1 in
             --val_pairs /data/nfs/kc/liukang/face_data/valid_150/pairs.txt \
             --max_nrof_epochs 5000 \
             --epoch_size 1000 \
-            --people_per_batch 600 \
+            --people_per_batch 1800 \
             --images_per_person 10 \
-            --max_triplet_per_select 600 \
+            --max_triplet_per_select 1500 \
             --random_flip False \
             --gpu_memory_fraction 1.0 \
             --gpu 0,1,2,3 \
@@ -161,7 +161,7 @@ case $1 in
             --data_dir /data/nfs/kc/liukang/face_data/80w_camera/80w_split_70_10/70w_all \
             --model_def models.inception_resnet_v1 \
             --optimizer ADAM \
-            --learning_rate 0.1 \
+            --learning_rate 0.4 \
             --learning_rate_decay_epochs 10 \
             --learning_rate_decay_factor 0.8 \
             --unsupervised NONE \
@@ -171,9 +171,9 @@ case $1 in
             --val_pairs /data/nfs/kc/liukang/face_data/valid_150/pairs.txt \
             --max_nrof_epochs 5000  \
             --epoch_size 1000 \
-            --people_per_batch 12000 \
+            --people_per_batch 1800 \
             --images_per_person 2 \
-            --max_triplet_per_select 600 \
+            --max_triplet_per_select 1500 \
             --random_flip False \
             --gpu_memory_fraction 1.0 \
             --gpu 0,1,2,3 \
