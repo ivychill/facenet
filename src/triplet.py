@@ -82,7 +82,7 @@ class Triplet(object):
                 emb, lab = sess.run([embeddings, labels_batch], feed_dict={batch_size_placeholder: batch_size,
                                                                            learning_rate_placeholder: lr,
                                                                            phase_train_placeholder: True})
-                logger.debug('labels_batch: %s' % (lab))
+                # logger.debug('labels_batch: %s' % (lab))
                 emb_array[lab, :] = emb
 
             logger.debug('train time: %.3f' % (time.time()-start_time))
